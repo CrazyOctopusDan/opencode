@@ -1344,11 +1344,15 @@ export type KeybindsConfig = {
    */
   history_next?: string
   /**
-   * Next child session
+   * Go to first child session
+   */
+  session_child_first?: string
+  /**
+   * Go to next child session
    */
   session_child_cycle?: string
   /**
-   * Previous child session
+   * Go to previous child session
    */
   session_child_cycle_reverse?: string
   /**
