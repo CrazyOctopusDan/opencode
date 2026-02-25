@@ -50,7 +50,7 @@ jobs:
 
       - run: bun install
 
-      - run: ./packages/opencode/script/build.ts
+      - run: ./packages/opencode/script/build.ts --all
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
 
