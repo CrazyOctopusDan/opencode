@@ -1,5 +1,5 @@
 # Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
-# 适合在 macOS 上开发、需要 Windows 安装包的情况
+# 使用与 publish.yml 相同的 tauri-action，确保构建逻辑一致
 #
 # 使用方式：
 # 1. 修改代码后 push 到 dev 分支，或
@@ -27,11 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - id: version
         run: |
@@ -44,11 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
-          bun-version-file: package.json
-
-      - run: bun install
+          cross-compile: "true"
 
       - run: ./packages/opencode/script/build.ts --all
         env:
@@ -65,11 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -82,20 +72,22 @@ jobs:
           shared-key: x86_64-pc-windows-msvc
 
       - name: Prepare (download opencode-cli for sidecar)
-        run: cd packages/desktop && bun ./scripts/prepare.ts
+        run: |
+          cd packages/desktop
+          bun ./scripts/prepare.ts
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           RUST_TARGET: x86_64-pc-windows-msvc
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
-      - name: Build Tauri Desktop
-        run: cd packages/desktop && bun run tauri build -- --target x86_64-pc-windows-msvc -c=src-tauri/tauri.prod.conf.json --verbose
+      - name: Build and upload artifacts
+        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
+        timeout-minutes: 60
+        with:
+          projectPath: packages/desktop
+          uploadWorkflowArtifacts: true
+          args: --target x86_64-pc-windows-msvc --config ./src-tauri/tauri.prod.conf.json --verbose
+          updaterJsonPreferNsis: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencode-desktop-windows
-          path: packages/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/
