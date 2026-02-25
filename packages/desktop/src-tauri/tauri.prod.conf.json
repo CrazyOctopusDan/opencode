@@ -3,7 +3,7 @@
   "productName": "OpenCode",
   "identifier": "ai.opencode.desktop",
   "bundle": {
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "icon": ["icons/prod/32x32.png", "icons/prod/128x128.png", "icons/prod/128x128@2x.png", "icons/prod/icon.icns", "icons/prod/icon.ico"],
     "windows": {
       "nsis": {
