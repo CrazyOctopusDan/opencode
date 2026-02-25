@@ -9,7 +9,7 @@ name: Build Desktop (Windows)
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, main, dev-sapphire]
   workflow_dispatch:
 
 concurrency:
