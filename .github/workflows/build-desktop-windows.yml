@@ -1,0 +1,101 @@
+# Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
+# 适合在 macOS 上开发、需要 Windows 安装包的情况
+#
+# 使用方式：
+# 1. 修改代码后 push 到 dev 分支，或
+# 2. 在 GitHub 仓库页面 Actions -> Build Desktop (Windows) -> Run workflow 手动触发
+
+name: Build Desktop (Windows)
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install
+
+      - id: version
+        run: |
+          V=$(node -p "require('./packages/opencode/package.json').version")
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install
+
+      - run: ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli
+          path: packages/opencode/dist
+
+  build-desktop-windows:
+    needs: [version, build-cli]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri
+          shared-key: x86_64-pc-windows-msvc
+
+      - name: Prepare (download opencode-cli for sidecar)
+        run: cd packages/desktop && bun ./scripts/prepare.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+          RUST_TARGET: x86_64-pc-windows-msvc
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Build Tauri Desktop
+        run: cd packages/desktop && bun run tauri build -- --target x86_64-pc-windows-msvc --config ./src-tauri/tauri.prod.conf.json --verbose
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-desktop-windows
+          path: packages/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/
