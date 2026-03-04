@@ -233,11 +233,35 @@ pub async fn check_health_or_ask_retry(app: &AppHandle, url: &str) -> bool {
 
         const RETRY: &str = "Retry";
 
-        let res = app.dialog()
-    		  .message(format!("Could not connect to configured server:\n{}\n\nWould you like to retry or start a local server instead?", url))
-    		  .title("Connection Failed")
-    		  .buttons(MessageDialogButtons::OkCancelCustom(RETRY.to_string(), "Start Local".to_string()))
-    		  .blocking_show_with_result();
+        let (tx, rx) = tokio::sync::oneshot::channel::<MessageDialogResult>();
+        let handle = app.clone();
+        let url = url.to_string();
+
+        let run = app.run_on_main_thread(move || {
+            handle
+                .dialog()
+                .message(format!("Could not connect to configured server:\n{}\n\nWould you like to retry or start a local server instead?", url))
+                .title("Connection Failed")
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    RETRY.to_string(),
+                    "Start Local".to_string(),
+                ))
+                .show_with_result(move |res| {
+                    let _ = tx.send(res);
+                });
+        });
+
+        if let Err(e) = run {
+            tracing::error!("Failed to run dialog on main thread: {e}");
+            break;
+        }
+
+        // If the dialog fails to show for any reason, don't hang the app startup forever.
+        let res = tokio::time::timeout(Duration::from_secs(120), rx)
+            .await
+            .ok()
+            .and_then(|v| v.ok())
+            .unwrap_or(MessageDialogResult::Cancel);
 
         match res {
             MessageDialogResult::Custom(name) if name == RETRY => {

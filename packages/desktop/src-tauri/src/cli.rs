@@ -106,10 +106,16 @@ fn get_cli_install_path() -> Option<std::path::PathBuf> {
 }
 
 pub fn get_sidecar_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    // Get binary with symlinks support
-    tauri::process::current_binary(&app.env())
-        .expect("Failed to get current binary")
-        .parent()
+    // `tauri::process::current_binary` rejects some symlinked paths on macOS
+    // (e.g. `/var` -> `/private/var`) which can happen in dev/sandbox runs.
+    // Canonicalize to the real path and avoid panicking during startup.
+    let exe: std::path::PathBuf = tauri::process::current_binary(&app.env())
+        .ok()
+        .or_else(|| std::env::current_exe().ok())
+        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+        .expect("Failed to get current binary path");
+
+    exe.parent()
         .expect("Failed to get parent dir")
         .join("opencode-cli")
 }
