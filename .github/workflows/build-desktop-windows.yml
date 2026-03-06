@@ -1,9 +1,9 @@
 # Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
 # 与 publish.yml 的 build-tauri（Windows 分支）逻辑对齐
 #
-# 注意：不使用 ./.github/actions/setup-bun，因为其缓存 key 引用了
-# 不存在的 bun.lockb（项目实际使用 bun.lock），导致缓存失效，
-# 每次都会重新编译 tree-sitter 等原生依赖，在标准 runner 上非常慢。
+# 使用 --ignore-scripts 跳过 trustedDependencies 的原生编译（tree-sitter 等），
+# 避免在标准 2 核 runner 上编译 C/C++ 导致长时间无输出看似卡死。
+# Bun.build() 使用 Bun 自带 bundler，不依赖 esbuild/tree-sitter 的 postinstall。
 
 name: Build Desktop (Windows)
 
@@ -57,7 +57,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies (skip native compilation)
+        run: bun install --ignore-scripts
 
       - run: ./packages/opencode/script/build.ts --all
         env:
@@ -89,7 +90,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies (skip native compilation)
+        run: bun install --ignore-scripts
         shell: bash
 
       - name: Install Rust
