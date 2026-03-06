@@ -1,9 +1,9 @@
 # Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
 # 与 publish.yml 的 build-tauri（Windows 分支）逻辑对齐
 #
-# 使用 --ignore-scripts 跳过 trustedDependencies 的原生编译（tree-sitter 等），
-# 避免在标准 2 核 runner 上编译 C/C++ 导致长时间无输出看似卡死。
-# Bun.build() 使用 Bun 自带 bundler，不依赖 esbuild/tree-sitter 的 postinstall。
+# 已知问题：bun install 在 monorepo + CI 下存在 linker/cache 死锁 bug
+# (oven-sh/bun #25624, #22846, #25970, #20886)，
+# 使用 --no-cache 绕过有问题的缓存机制。
 
 name: Build Desktop (Windows)
 
@@ -49,16 +49,10 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install dependencies (skip native compilation)
-        run: bun install --ignore-scripts
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules
+          bun install --no-cache --ignore-scripts --verbose
 
       - run: ./packages/opencode/script/build.ts --all
         env:
@@ -82,16 +76,10 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install dependencies (skip native compilation)
-        run: bun install --ignore-scripts
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules
+          bun install --no-cache --ignore-scripts --verbose
         shell: bash
 
       - name: Install Rust
