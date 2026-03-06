@@ -1,15 +1,11 @@
 # Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
-# 与 publish.yml 的 build-tauri（Windows 分支）逻辑对齐，使用标准 runner 与固定 Bun 版本避免卡住
-#
-# 使用方式：
-# 1. 修改代码后 push 到 dev 分支，或
-# 2. 在 GitHub 仓库页面 Actions -> Build Desktop (Windows) -> Run workflow 手动触发
+# 与 publish.yml 的 build-tauri（Windows 分支）逻辑对齐
 
 name: Build Desktop (Windows)
 
 on:
   push:
-    branches: [dev, main, dev-sapphire]
+    branches: [dev-sapphire]
   workflow_dispatch:
 
 concurrency:
@@ -26,14 +22,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.10"
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - id: version
         run: |
@@ -45,14 +38,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           fetch-tags: true
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.10"
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - run: ./packages/opencode/script/build.ts --all
         env:
@@ -68,15 +58,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           fetch-tags: true
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.10"
-      - run: bun install
-        shell: bash
+      - uses: ./.github/actions/setup-bun
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
