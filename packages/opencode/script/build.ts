@@ -143,7 +143,9 @@ const targets = singleFlag
 await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
-if (!skipInstall) {
+// Full cross-platform install is slow and can appear to hang; skip when only building for current platform.
+if (!skipInstall && !singleFlag) {
+  console.log("Installing optional deps for all platforms (this may take a while)...")
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
 }

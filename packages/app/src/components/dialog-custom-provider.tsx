@@ -15,6 +15,7 @@ import { DialogSelectProvider } from "./dialog-select-provider"
 
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
 const OPENAI_COMPATIBLE = "@ai-sdk/openai-compatible"
+const CUSTOM_PROVIDER_ENABLED = import.meta.env.VITE_ALLOW_CUSTOM_PROVIDER === "true"
 
 type Translator = ReturnType<typeof useLanguage>["t"]
 
@@ -229,6 +230,13 @@ export function DialogCustomProvider(props: Props) {
   const save = async (e: SubmitEvent) => {
     e.preventDefault()
     if (form.saving) return
+    if (!CUSTOM_PROVIDER_ENABLED) {
+      showToast({
+        title: "Custom provider is disabled",
+        description: "Your organization policy does not allow adding custom provider endpoints.",
+      })
+      return
+    }
 
     const result = validate()
     if (!result) return

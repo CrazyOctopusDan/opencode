@@ -8,6 +8,7 @@ import { ProviderAuth } from "../../provider/auth"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { ModelPolicy } from "../../provider/model-policy"
 
 export const ProviderRoutes = lazy(() =>
   new Hono()
@@ -35,6 +36,15 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        const policy = await ModelPolicy.snapshot()
+        if (policy.enabled) {
+          const providers = await Provider.list()
+          return c.json({
+            all: Object.values(providers),
+            default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
+            connected: Object.keys(providers),
+          })
+        }
         const config = await Config.get()
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined

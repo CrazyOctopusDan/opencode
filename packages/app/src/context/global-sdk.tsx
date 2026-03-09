@@ -6,6 +6,7 @@ import z from "zod"
 import { createSdkForServer } from "@/utils/server"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
+import { useAuth } from "./auth"
 
 const abortError = z.object({
   name: z.literal("AbortError"),
@@ -16,6 +17,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
   init: () => {
     const server = useServer()
     const platform = usePlatform()
+    const auth = useAuth()
     const abort = new AbortController()
 
     const eventFetch = (() => {
@@ -36,6 +38,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       signal: abort.signal,
       fetch: eventFetch,
       server: currentServer.http,
+      token: auth.token(),
     })
     const emitter = createGlobalEmitter<{
       [key: string]: Event
@@ -210,6 +213,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       server: server.current.http,
       fetch: platform.fetch,
       throwOnError: true,
+      token: auth.token(),
     })
 
     return {
@@ -222,6 +226,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         return createSdkForServer({
           server: s.http,
           fetch: platform.fetch,
+          token: auth.token(),
           ...opts,
         })
       },

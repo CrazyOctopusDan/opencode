@@ -10,6 +10,11 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { errors } from "../error"
+import { Flag } from "@/flag/flag"
+import { AuthToken } from "../auth-token"
+import { ModelPolicy } from "@/provider/model-policy"
+import { TempoApi } from "../tempo-api"
+import { TempoSession } from "../tempo-session"
 
 const log = Log.create({ service: "server" })
 
@@ -17,6 +22,86 @@ export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({
 
 export const GlobalRoutes = lazy(() =>
   new Hono()
+    .post(
+      "/login",
+      describeRoute({
+        summary: "Login",
+        description: "Authenticate with username and password, then get bearer token.",
+        operationId: "global.login",
+        responses: {
+          200: {
+            description: "Login success",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    access_token: z.string(),
+                    token_type: z.literal("Bearer"),
+                    expires_in: z.number(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          username: z.string(),
+          password: z.string(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        if (TempoApi.enabled()) {
+          const upstream = await TempoApi.login({
+            username: body.username,
+            password: body.password,
+          })
+          const local = AuthToken.create(body.username)
+          TempoSession.set(local.access_token, {
+            token: upstream.token,
+            cookie: upstream.cookie,
+          })
+          return c.json(local)
+        }
+        const password = Flag.OPENCODE_SERVER_PASSWORD
+        const expected = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+        if (password && (body.username !== expected || body.password !== password)) {
+          return c.json({ access_token: "", token_type: "Bearer", expires_in: 0 }, 401)
+        }
+        return c.json(AuthToken.create(body.username || expected))
+      },
+    )
+    .post(
+      "/logout",
+      describeRoute({
+        summary: "Logout",
+        description: "Revoke bearer token from current session.",
+        operationId: "global.logout",
+        responses: {
+          200: {
+            description: "Logout success",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.boolean() })),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const auth = c.req.header("authorization")
+        const token = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : ""
+        if (token) {
+          AuthToken.revoke(token)
+          TempoSession.remove(token)
+        }
+        return c.json({ ok: true })
+      },
+    )
     .get(
       "/health",
       describeRoute({
@@ -149,6 +234,37 @@ export const GlobalRoutes = lazy(() =>
       validator("json", Config.Info),
       async (c) => {
         const config = c.req.valid("json")
+        const policy = await ModelPolicy.snapshot()
+        if (policy.enabled) {
+          const allowed = new Set(policy.list.map((item) => item.id))
+          const provider = Object.fromEntries(
+            Object.entries(config.provider ?? {})
+              .filter(([providerID]) => allowed.has(providerID))
+              .map(([providerID, value]) => {
+                const item = policy.provider(providerID)!
+                const models = Object.fromEntries(
+                  Object.entries(value.models ?? {}).filter(([modelID]) => policy.allowedModel(providerID, modelID)),
+                )
+                return [
+                  providerID,
+                  {
+                    ...value,
+                    name: item.name ?? value.name,
+                    npm: "@ai-sdk/openai-compatible",
+                    api: item.baseURL,
+                    options: {
+                      ...(value.options ?? {}),
+                      baseURL: item.baseURL,
+                    },
+                    models,
+                  },
+                ]
+              }),
+          )
+          config.provider = provider
+          config.enabled_providers = [...allowed]
+          config.disabled_providers = []
+        }
         const next = await Config.updateGlobal(config)
         return c.json(next)
       },

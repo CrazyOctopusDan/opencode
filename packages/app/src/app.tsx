@@ -9,6 +9,7 @@ import { ThemeProvider } from "@opencode-ai/ui/theme"
 import { MetaProvider } from "@solidjs/meta"
 import { Navigate, Route, Router } from "@solidjs/router"
 import { ErrorBoundary, type JSX, lazy, type ParentProps, Show, Suspense } from "solid-js"
+import { AuthProvider, useAuth } from "@/context/auth"
 import { CommandProvider } from "@/context/command"
 import { CommentsProvider } from "@/context/comments"
 import { FileProvider } from "@/context/file"
@@ -31,6 +32,7 @@ import { ErrorPage } from "./pages/error"
 
 const Home = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
+const LoginPage = lazy(() => import("@/pages/login"))
 const Loading = () => <div class="size-full" />
 
 const HomeRoute = () => (
@@ -48,6 +50,20 @@ const SessionRoute = () => (
 )
 
 const SessionIndexRoute = () => <Navigate href="session" />
+const LoginRoute = () => (
+  <Suspense fallback={<Loading />}>
+    <LoginPage />
+  </Suspense>
+)
+
+function Protected(props: ParentProps) {
+  const auth = useAuth()
+  return <Show when={auth.loggedIn()} fallback={<Navigate href="/login" />}>{props.children}</Show>
+}
+
+function ProtectedApp(props: ParentProps) {
+  return <Protected>{props.children}</Protected>
+}
 
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
@@ -110,6 +126,19 @@ function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
   )
 }
 
+function RouterRootWithAuth(props: ParentProps<{ appChildren?: JSX.Element }>) {
+  const auth = useAuth()
+  return (
+    <Show when={auth.loggedIn()} fallback={props.children}>
+      <GlobalSDKProvider>
+        <GlobalSyncProvider>
+          <RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>
+        </GlobalSyncProvider>
+      </GlobalSDKProvider>
+    </Show>
+  )
+}
+
 export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
@@ -147,21 +176,33 @@ export function AppInterface(props: {
 }) {
   return (
     <ServerProvider defaultServer={props.defaultServer} servers={props.servers}>
-      <ServerKey>
-        <GlobalSDKProvider>
-          <GlobalSyncProvider>
-            <Router
-              root={(routerProps) => <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>}
+      <AuthProvider>
+        <ServerKey>
+          <Router root={(routerProps) => <RouterRootWithAuth appChildren={props.children}>{routerProps.children}</RouterRootWithAuth>}>
+            <Route path="/login" component={LoginRoute} />
+            <Route
+              path="/"
+              component={(routeProps) => (
+                <ProtectedApp>
+                  <HomeRoute />
+                  {routeProps.children}
+                </ProtectedApp>
+              )}
+            />
+            <Route
+              path="/:dir"
+              component={(routeProps) => (
+                <ProtectedApp>
+                  <DirectoryLayout>{routeProps.children}</DirectoryLayout>
+                </ProtectedApp>
+              )}
             >
-              <Route path="/" component={HomeRoute} />
-              <Route path="/:dir" component={DirectoryLayout}>
-                <Route path="/" component={SessionIndexRoute} />
-                <Route path="/session/:id?" component={SessionRoute} />
-              </Route>
-            </Router>
-          </GlobalSyncProvider>
-        </GlobalSDKProvider>
-      </ServerKey>
+              <Route path="/" component={SessionIndexRoute} />
+              <Route path="/session/:id?" component={SessionRoute} />
+            </Route>
+          </Router>
+        </ServerKey>
+      </AuthProvider>
     </ServerProvider>
   )
 }

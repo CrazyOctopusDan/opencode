@@ -44,6 +44,7 @@ import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { GoogleAuth } from "google-auth-library"
 import { ProviderTransform } from "./transform"
 import { Installation } from "../installation"
+import { ModelPolicy } from "./model-policy"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -778,6 +779,7 @@ export namespace Provider {
   const state = Instance.state(async () => {
     using _ = log.time("state")
     const config = await Config.get()
+    const policy = await ModelPolicy.snapshot()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
@@ -799,7 +801,10 @@ export namespace Provider {
 
     log.info("init")
 
-    const configProviders = Object.entries(config.provider ?? {})
+    const configProviders = Object.entries(config.provider ?? {}).filter(([providerID]) => {
+      if (!policy.enabled) return true
+      return policy.allowedProvider(providerID)
+    })
 
     // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
     if (database["github-copilot"]) {
@@ -914,6 +919,7 @@ export namespace Provider {
     // load env
     const env = Env.all()
     for (const [providerID, provider] of Object.entries(database)) {
+      if (policy.enabled && !policy.allowedProvider(providerID)) continue
       if (disabled.has(providerID)) continue
       const apiKey = provider.env.map((item) => env[item]).find(Boolean)
       if (!apiKey) continue
@@ -925,6 +931,7 @@ export namespace Provider {
 
     // load apikeys
     for (const [providerID, provider] of Object.entries(await Auth.all())) {
+      if (policy.enabled && !policy.allowedProvider(providerID)) continue
       if (disabled.has(providerID)) continue
       if (provider.type === "api") {
         mergeProvider(providerID, {
@@ -982,6 +989,7 @@ export namespace Provider {
     }
 
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
+      if (policy.enabled && !policy.allowedProvider(providerID)) continue
       if (disabled.has(providerID)) continue
       const data = database[providerID]
       if (!data) {
@@ -1011,11 +1019,27 @@ export namespace Provider {
         delete providers[providerID]
         continue
       }
+      const item = policy.provider(providerID)
+      if (policy.enabled && !item) {
+        delete providers[providerID]
+        continue
+      }
+      if (item) {
+        provider.options.baseURL = item.baseURL
+      }
 
       const configProvider = config.provider?.[providerID]
 
       for (const [modelID, model] of Object.entries(provider.models)) {
+        if (item && !policy.allowedModel(providerID, modelID)) {
+          delete provider.models[modelID]
+          continue
+        }
         model.api.id = model.api.id ?? model.id ?? modelID
+        if (item) {
+          model.api.npm = "@ai-sdk/openai-compatible"
+          model.api.url = item.baseURL
+        }
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]
         if (model.status === "alpha" && !Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]

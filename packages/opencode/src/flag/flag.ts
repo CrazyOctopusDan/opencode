@@ -8,6 +8,22 @@ function falsy(key: string) {
   return value === "false" || value === "0"
 }
 
+function define(key: string, value: string) {
+  if (process.env[key] !== undefined) return
+  process.env[key] = value
+}
+
+define("OPENCODE_AUTH_TOKEN_TTL_SECONDS", "28800")
+define("OPENCODE_LOCKED_MODEL_POLICY", "")
+define("OPENCODE_LOCKED_MODEL_POLICY_URL", "")
+define("OPENCODE_LOCKED_MODEL_POLICY_TOKEN", "")
+define("OPENCODE_LOCKED_MODEL_POLICY_REFRESH_SECONDS", "60")
+define("OPENCODE_TEMPO_BASE_URL", "")
+define("OPENCODE_TEMPO_ENV", "prod")
+define("OPENCODE_TEMPO_DEV_BASE_URL", "https://tempodev.travelsky.com.cn/")
+define("OPENCODE_TEMPO_PROD_BASE_URL", "https://tempo.travelsky.com.cn/")
+define("OPENCODE_TEMPO_SM2_PUBLIC_KEY", "")
+
 export namespace Flag {
   export const OPENCODE_AUTO_SHARE = truthy("OPENCODE_AUTO_SHARE")
   export const OPENCODE_GIT_BASH_PATH = process.env["OPENCODE_GIT_BASH_PATH"]
@@ -60,6 +76,16 @@ export namespace Flag {
   export const OPENCODE_EXPERIMENTAL_MARKDOWN = !falsy("OPENCODE_EXPERIMENTAL_MARKDOWN")
   export const OPENCODE_MODELS_URL = process.env["OPENCODE_MODELS_URL"]
   export const OPENCODE_MODELS_PATH = process.env["OPENCODE_MODELS_PATH"]
+  export const OPENCODE_AUTH_TOKEN_TTL_SECONDS = process.env["OPENCODE_AUTH_TOKEN_TTL_SECONDS"]
+  export const OPENCODE_LOCKED_MODEL_POLICY = process.env["OPENCODE_LOCKED_MODEL_POLICY"]
+  export const OPENCODE_LOCKED_MODEL_POLICY_URL = process.env["OPENCODE_LOCKED_MODEL_POLICY_URL"]
+  export const OPENCODE_LOCKED_MODEL_POLICY_TOKEN = process.env["OPENCODE_LOCKED_MODEL_POLICY_TOKEN"]
+  export const OPENCODE_LOCKED_MODEL_POLICY_REFRESH_SECONDS = number("OPENCODE_LOCKED_MODEL_POLICY_REFRESH_SECONDS")
+  export const OPENCODE_TEMPO_BASE_URL = process.env["OPENCODE_TEMPO_BASE_URL"]
+  export const OPENCODE_TEMPO_ENV = process.env["OPENCODE_TEMPO_ENV"]
+  export const OPENCODE_TEMPO_DEV_BASE_URL = process.env["OPENCODE_TEMPO_DEV_BASE_URL"]
+  export const OPENCODE_TEMPO_PROD_BASE_URL = process.env["OPENCODE_TEMPO_PROD_BASE_URL"]
+  export const OPENCODE_TEMPO_SM2_PUBLIC_KEY = process.env["OPENCODE_TEMPO_SM2_PUBLIC_KEY"]
 
   function number(key: string) {
     const value = process.env[key]

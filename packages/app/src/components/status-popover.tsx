@@ -14,6 +14,7 @@ import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
+import { useAuth } from "@/context/auth"
 import { checkServerHealth, type ServerHealth } from "@/utils/server-health"
 import { DialogSelectServer } from "./dialog-select-server"
 
@@ -167,6 +168,7 @@ export function StatusPopover() {
   const dialog = useDialog()
   const language = useLanguage()
   const navigate = useNavigate()
+  const auth = useAuth()
 
   const fetcher = platform.fetch ?? globalThis.fetch
   const servers = createMemo(() => {
@@ -305,6 +307,15 @@ export function StatusPopover() {
                   onClick={() => dialog.show(() => <DialogSelectServer />, defaultServer.refresh)}
                 >
                   {language.t("status.popover.action.manageServers")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="mt-2 self-start h-8 px-3 py-1.5 text-text-danger-base"
+                  onClick={() => {
+                    void auth.logout().then(() => navigate("/login"))
+                  }}
+                >
+                  退出登录
                 </Button>
               </div>
             </div>
