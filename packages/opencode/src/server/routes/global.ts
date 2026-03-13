@@ -55,11 +55,27 @@ export const GlobalRoutes = lazy(() =>
       ),
       async (c) => {
         const body = c.req.valid("json")
-        if (TempoApi.enabled()) {
+        const tempo = TempoApi.enabled()
+        log.warn("global login mode", {
+          tempo,
+          tempo_env: Flag.OPENCODE_TEMPO_ENV,
+          tempo_base_url: Flag.OPENCODE_TEMPO_BASE_URL,
+          tempo_dev_base_url: Flag.OPENCODE_TEMPO_DEV_BASE_URL,
+          tempo_prod_base_url: Flag.OPENCODE_TEMPO_PROD_BASE_URL,
+          tempo_sm2_public_key: !!Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY?.trim(),
+        })
+
+        if (tempo) {
           const upstream = await TempoApi.login({
             username: body.username,
             password: body.password,
+          }).catch((error) => {
+            log.error("tempo login failed", { error })
+            return
           })
+          if (!upstream) {
+            return c.json({ message: "Company login endpoint unreachable or rejected request. Check build baseURL and network route." }, 401)
+          }
           const local = AuthToken.create(body.username)
           TempoSession.set(local.access_token, {
             token: upstream.token,

@@ -122,6 +122,7 @@ export namespace TempoApi {
   export function enabled() {
     if (Flag.OPENCODE_TEMPO_BASE_URL?.trim()) return true
     const env = Flag.OPENCODE_TEMPO_ENV?.trim().toLowerCase()
+    if (!env) return true
     return env === "dev" || env === "test" || env === "prod"
   }
 
