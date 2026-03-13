@@ -120,12 +120,14 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
 
 export namespace TempoApi {
   export function enabled() {
-    return !!Flag.OPENCODE_TEMPO_BASE_URL
+    if (Flag.OPENCODE_TEMPO_BASE_URL?.trim()) return true
+    const env = Flag.OPENCODE_TEMPO_ENV?.trim().toLowerCase()
+    return env === "dev" || env === "test" || env === "prod"
   }
 
   export async function login(input: { username: string; password: string }) {
     const url = `${base()}${loginPath}`
-    const enPasswd = SM2.encryptPassword(input.password)
+    const enPasswd = SM2.encryptPassword(input.password, Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY)
     const body = { username: input.username, enPasswd }
     const res = await fetch(url, {
       method: "POST",

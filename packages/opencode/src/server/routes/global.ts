@@ -70,7 +70,7 @@ export const GlobalRoutes = lazy(() =>
         const password = Flag.OPENCODE_SERVER_PASSWORD
         const expected = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
         if (password && (body.username !== expected || body.password !== password)) {
-          return c.json({ access_token: "", token_type: "Bearer", expires_in: 0 }, 401)
+          return c.json({ message: "Invalid username or password" }, 401)
         }
         return c.json(AuthToken.create(body.username || expected))
       },

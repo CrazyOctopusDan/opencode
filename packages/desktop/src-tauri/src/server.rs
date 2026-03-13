@@ -182,6 +182,14 @@ pub fn is_localhost_url(url: &str) -> bool {
     reqwest::Url::parse(url).is_ok_and(|u| url_is_localhost(&u))
 }
 
+fn environment_label(url: &str) -> &'static str {
+    if is_localhost_url(url) {
+        "local_sidecar"
+    } else {
+        "remote_or_intranet"
+    }
+}
+
 fn url_is_localhost(url: &reqwest::Url) -> bool {
     url.host_str().is_some_and(|host| {
         host.eq_ignore_ascii_case("localhost")
@@ -226,21 +234,29 @@ fn get_server_url_from_config(config: &cli::Config) -> Option<String> {
 
 pub async fn check_health_or_ask_retry(app: &AppHandle, url: &str) -> bool {
     tracing::debug!(%url, "Checking health");
+    let health_url = format!("{url}/global/health");
+    let label = environment_label(url);
     loop {
         if check_health(url, None).await {
             return true;
         }
+
+        tracing::warn!(%url, %health_url, environment = %label, "Configured server health check failed");
 
         const RETRY: &str = "Retry";
 
         let (tx, rx) = tokio::sync::oneshot::channel::<MessageDialogResult>();
         let handle = app.clone();
         let url = url.to_string();
+        let health_url = health_url.clone();
+        let label = label.to_string();
 
         let run = app.run_on_main_thread(move || {
             handle
                 .dialog()
-                .message(format!("Could not connect to configured server:\n{}\n\nWould you like to retry or start a local server instead?", url))
+                .message(format!(
+                    "Could not connect to configured server.\n\nEnvironment: {label}\nServer URL: {url}\nHealth URL: {health_url}\n\nChecks:\n1) If environment=remote_or_intranet, verify VPN/route/proxy to this host.\n2) If environment=local_sidecar, verify local sidecar process and firewall policy.\n3) Confirm the server is reachable and exposes /global/health.\n\nWould you like to retry or start a local server instead?"
+                ))
                 .title("Connection Failed")
                 .buttons(MessageDialogButtons::OkCancelCustom(
                     RETRY.to_string(),

@@ -13,6 +13,24 @@ type LoginResult = {
   expires_in: number
 }
 
+type LoginError = {
+  message?: string
+  error?: string
+}
+
+function env(url: string) {
+  if (!URL.canParse(url)) return "unknown_server"
+  const host = new URL(url).hostname.toLowerCase()
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "local_sidecar"
+  if (host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".corp")) return "intranet_remote"
+  return "remote_server"
+}
+
+function hint(url: string, path: string) {
+  const stage = env(url)
+  return `环境=${stage} 地址=${url} 接口=${path}`
+}
+
 export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
   name: "Auth",
   init: () => {
@@ -66,14 +84,23 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
         const conn = server.current
         if (!conn) throw new Error("Server not available")
         const fetcher = platform.fetch ?? globalThis.fetch
-        const res = await fetcher(`${conn.http.url}/global/login`, {
+        const url = conn.http.url
+        const path = "/global/login"
+        const res = await fetcher(`${url}${path}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ username, password }),
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new Error(`登录请求未送达。${hint(url, path)}。请检查内网连通性、代理/VPN、或服务进程是否存活。原始错误: ${msg}`)
         })
-        if (!res.ok) throw new Error("Invalid username or password")
+        if (!res.ok) {
+          const data = (await res.json().catch(() => undefined)) as LoginError | undefined
+          const msg = data?.message || data?.error || "Invalid username or password"
+          throw new Error(`${msg}。${hint(url, path)} HTTP=${res.status}`)
+        }
         const data = (await res.json()) as LoginResult
         const expiresAt = Date.now() + Math.max(1, data.expires_in) * 1000
         setStore({

@@ -45,9 +45,27 @@ jobs:
         with:
           fetch-tags: true
 
+      - name: Trace build context (CLI)
+        run: |
+          echo "::group::Build context"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          echo "run_id=${{ github.run_id }}"
+          echo "version=${{ needs.version.outputs.version }}"
+          echo "event=${{ github.event_name }}"
+          echo "::endgroup::"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Trace toolchain (CLI)
+        run: |
+          echo "::group::Toolchain"
+          uname -a
+          node -v
+          bun -v
+          echo "::endgroup::"
 
       - name: Install dependencies
         run: |
@@ -72,9 +90,31 @@ jobs:
         with:
           fetch-tags: true
 
+      - name: Trace build context (Desktop Windows)
+        run: |
+          echo "::group::Build context"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          echo "run_id=${{ github.run_id }}"
+          echo "version=${{ needs.version.outputs.version }}"
+          echo "event=${{ github.event_name }}"
+          echo "::endgroup::"
+        shell: bash
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Trace toolchain (Desktop Windows)
+        run: |
+          echo "::group::Toolchain"
+          uname -a || true
+          node -v
+          bun -v
+          rustc -Vv || true
+          cargo -V || true
+          echo "::endgroup::"
+        shell: bash
 
       - name: Install dependencies
         run: |
@@ -102,6 +142,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
+      - name: Trace sidecar assets before Tauri build
+        run: |
+          echo "::group::Sidecar files"
+          ls -la packages/desktop/src-tauri/target/opencode-binaries || true
+          find packages/desktop/src-tauri/target/opencode-binaries -maxdepth 4 -type f || true
+          echo "::endgroup::"
+        shell: bash
+
       - name: Build and upload artifacts
         uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
         timeout-minutes: 60
@@ -112,3 +160,11 @@ jobs:
           updaterJsonPreferNsis: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Trace bundled outputs
+        run: |
+          echo "::group::Bundle outputs"
+          find packages/desktop/src-tauri/target/x86_64-pc-windows-msvc -maxdepth 5 -type f \
+            \( -name "*.exe" -o -name "*.msi" -o -name "*.nsis.zip" -o -name "latest.json" \) || true
+          echo "::endgroup::"
+        shell: bash
