@@ -91,9 +91,9 @@ function normalizeModel(item: Record<string, unknown>) {
   return {
     id,
     name: typeof name === "string" ? name : id,
-    apiKey,
-    contextLength,
-    maxTokens,
+    ...(apiKey ? { apiKey } : {}),
+    ...(contextLength ? { contextLength } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
   }
 }
 
@@ -124,7 +124,7 @@ function normalizeProvider(item: Record<string, unknown>, fallbackBaseURL: strin
     id: typeof providerID === "string" ? providerID : "tempo",
     name: typeof providerName === "string" ? providerName : "Tempo",
     baseURL,
-    apiKey,
+    ...(apiKey ? { apiKey } : {}),
     models,
   }
 }
@@ -170,7 +170,7 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
         id: providerID,
         name: providerID,
         baseURL,
-        apiKey,
+        ...(apiKey ? { apiKey } : {}),
         models: [model],
       })
     }
