@@ -7,19 +7,19 @@ const defaultDevBaseURL = "https://tempodev.travelsky.com.cn/"
 const defaultProdBaseURL = "https://tempo.travelsky.com.cn/"
 
 type PolicyModel = {
-  id: string
-  name: string
-  apiKey?: string
-  contextLength?: number
-  maxTokens?: number
+  id: string;
+  name: string;
+  apiKey?: string;
+  contextLength?: number;
+  maxTokens?: number;
 }
 
 type PolicyProvider = {
-  id: string
-  name?: string
-  baseURL: string
-  apiKey?: string
-  models: PolicyModel[]
+  id: string;
+  name?: string;
+  baseURL: string;
+  apiKey?: string;
+  models: PolicyModel[];
 }
 
 function base() {
@@ -228,12 +228,11 @@ export namespace TempoApi {
   }
 
   export async function listModels(auth?: { token?: string; cookie?: string }) {
-    const headers = {
-      ...(() => {
-        if (auth?.token) return { Cookie: `crown.token_key=${auth.token}` }
-        if (auth?.cookie) return { Cookie: auth.cookie }
-        return {}
-      })(),
+    const headers = new Headers()
+    if (auth?.token) {
+      headers.set("Cookie", `crown.token_key=${auth.token}`)
+    } else if (auth?.cookie) {
+      headers.set("Cookie", auth.cookie)
     }
     const res = await fetch(`${base()}${modelListPath}`, {
       method: "GET",
