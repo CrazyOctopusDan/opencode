@@ -170,63 +170,64 @@ export const SettingsProviders: Component = () => {
           </div>
         </div>
 
-        <div class="flex flex-col gap-1">
-          <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.popular")}</h3>
-          <div class="bg-surface-raised-base px-4 rounded-lg">
-            <For each={popular()}>
-              {(item) => (
-                <div class="flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
-                  <div class="flex flex-col min-w-0">
-                    <div class="flex items-center gap-x-3">
-                      <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
-                      <span class="text-14-medium text-text-strong">{item.name}</span>
-                      <Show when={item.id === "opencode"}>
-                        <span class="text-14-regular text-text-weak">
-                          {language.t("dialog.provider.opencode.tagline")}
-                        </span>
-                      </Show>
-                      <Show when={item.id === "opencode"}>
-                        <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-                      </Show>
-                      <Show when={item.id === "opencode-go"}>
-                        <>
+        <Show when={providers.canConnect()}>
+          <div class="flex flex-col gap-1">
+            <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.popular")}</h3>
+            <div class="bg-surface-raised-base px-4 rounded-lg">
+              <For each={popular()}>
+                {(item) => (
+                  <div class="flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
+                    <div class="flex flex-col min-w-0">
+                      <div class="flex items-center gap-x-3">
+                        <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
+                        <span class="text-14-medium text-text-strong">{item.name}</span>
+                        <Show when={item.id === "opencode"}>
                           <span class="text-14-regular text-text-weak">
-                            {language.t("dialog.provider.opencodeGo.tagline")}
+                            {language.t("dialog.provider.opencode.tagline")}
                           </span>
+                        </Show>
+                        <Show when={item.id === "opencode"}>
                           <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-                        </>
+                        </Show>
+                        <Show when={item.id === "opencode-go"}>
+                          <>
+                            <span class="text-14-regular text-text-weak">
+                              {language.t("dialog.provider.opencodeGo.tagline")}
+                            </span>
+                            <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                          </>
+                        </Show>
+                      </div>
+                      <Show when={note(item.id)}>
+                        {(key) => <span class="text-12-regular text-text-weak pl-8">{language.t(key())}</span>}
                       </Show>
                     </div>
-                    <Show when={note(item.id)}>
-                      {(key) => <span class="text-12-regular text-text-weak pl-8">{language.t(key())}</span>}
-                    </Show>
+                    <Button
+                      size="large"
+                      variant="secondary"
+                      icon="plus-small"
+                      onClick={() => {
+                        dialog.show(() => <DialogConnectProvider provider={item.id} />)
+                      }}
+                    >
+                      {language.t("common.connect")}
+                    </Button>
                   </div>
-                  <Button
-                    size="large"
-                    variant="secondary"
-                    icon="plus-small"
-                    onClick={() => {
-                      dialog.show(() => <DialogConnectProvider provider={item.id} />)
-                    }}
-                  >
-                    {language.t("common.connect")}
-                  </Button>
-                </div>
-              )}
-            </For>
+                )}
+              </For>
+            </div>
 
+            <Button
+              variant="ghost"
+              class="px-0 py-0 mt-5 text-14-medium text-text-interactive-base text-left justify-start hover:bg-transparent active:bg-transparent"
+              onClick={() => {
+                dialog.show(() => <DialogSelectProvider />)
+              }}
+            >
+              {language.t("dialog.provider.viewAll")}
+            </Button>
           </div>
-
-          <Button
-            variant="ghost"
-            class="px-0 py-0 mt-5 text-14-medium text-text-interactive-base text-left justify-start hover:bg-transparent active:bg-transparent"
-            onClick={() => {
-              dialog.show(() => <DialogSelectProvider />)
-            }}
-          >
-            {language.t("dialog.provider.viewAll")}
-          </Button>
-        </div>
+        </Show>
       </div>
     </div>
   )

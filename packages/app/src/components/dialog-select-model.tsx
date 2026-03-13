@@ -3,7 +3,7 @@ import { Component, ComponentProps, createMemo, JSX, Show, ValidComponent } from
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders } from "@/hooks/use-providers"
+import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -100,6 +100,7 @@ export function ModelSelectorPopover(props: {
     dismiss: null,
   })
   const dialog = useDialog()
+  const providers = useProviders()
 
   const handleManage = () => {
     setStore("open", false)
@@ -107,6 +108,7 @@ export function ModelSelectorPopover(props: {
   }
 
   const handleConnectProvider = () => {
+    if (!providers.canConnect()) return
     setStore("open", false)
     dialog.show(() => <DialogSelectProvider />)
   }
@@ -156,14 +158,16 @@ export function ModelSelectorPopover(props: {
             action={
               <div class="flex items-center gap-1">
                 <Tooltip placement="top" value={language.t("command.provider.connect")}>
-                  <IconButton
-                    icon="plus-small"
-                    variant="ghost"
-                    iconSize="normal"
-                    class="size-6"
-                    aria-label={language.t("command.provider.connect")}
-                    onClick={handleConnectProvider}
-                  />
+                  <Show when={providers.canConnect()}>
+                    <IconButton
+                      icon="plus-small"
+                      variant="ghost"
+                      iconSize="normal"
+                      class="size-6"
+                      aria-label={language.t("command.provider.connect")}
+                      onClick={handleConnectProvider}
+                    />
+                  </Show>
                 </Tooltip>
                 <Tooltip placement="top" value={language.t("dialog.model.manage")}>
                   <IconButton
@@ -187,19 +191,22 @@ export function ModelSelectorPopover(props: {
 export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
+  const providers = useProviders()
 
   return (
     <Dialog
       title={language.t("dialog.model.select.title")}
       action={
-        <Button
-          class="h-7 -my-1 text-14-medium"
-          icon="plus-small"
-          tabIndex={-1}
-          onClick={() => dialog.show(() => <DialogSelectProvider />)}
-        >
-          {language.t("command.provider.connect")}
-        </Button>
+        <Show when={providers.canConnect()}>
+          <Button
+            class="h-7 -my-1 text-14-medium"
+            icon="plus-small"
+            tabIndex={-1}
+            onClick={() => dialog.show(() => <DialogSelectProvider />)}
+          >
+            {language.t("command.provider.connect")}
+          </Button>
+        </Show>
       }
     >
       <ModelList provider={props.provider} onSelect={() => dialog.close()} />

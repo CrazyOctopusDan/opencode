@@ -871,12 +871,16 @@ export default function Layout(props: ParentProps) {
         keybind: "mod+o",
         onSelect: () => chooseProject(),
       },
-      {
-        id: "provider.connect",
-        title: language.t("command.provider.connect"),
-        category: language.t("command.category.provider"),
-        onSelect: () => connectProvider(),
-      },
+      ...(providers.canConnect()
+        ? [
+            {
+              id: "provider.connect",
+              title: language.t("command.provider.connect"),
+              category: language.t("command.category.provider"),
+              onSelect: () => connectProvider(),
+            },
+          ]
+        : []),
       {
         id: "server.switch",
         title: language.t("command.server.switch"),
@@ -1027,6 +1031,7 @@ export default function Layout(props: ParentProps) {
   })
 
   function connectProvider() {
+    if (!providers.canConnect()) return
     dialog.show(() => <DialogSelectProvider />)
   }
 
@@ -2004,7 +2009,7 @@ export default function Layout(props: ParentProps) {
         <div
           class="shrink-0 px-2 py-3 border-t border-border-weak-base"
           classList={{
-            hidden: !(providers.all().length > 0 && providers.paid().length === 0),
+            hidden: !(providers.canConnect() && providers.all().length > 0 && providers.paid().length === 0),
           }}
         >
           <div class="rounded-md bg-background-base shadow-xs-border-base">

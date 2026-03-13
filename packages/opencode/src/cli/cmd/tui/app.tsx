@@ -358,6 +358,9 @@ function App() {
   )
 
   const connected = useConnected()
+  const canConnect = createMemo(
+    () => sync.data.provider_next.all.some((item) => !sync.data.provider_next.connected.includes(item.id)),
+  )
   command.register(() => [
     {
       title: "Switch session",
@@ -504,10 +507,12 @@ function App() {
       title: "Connect provider",
       value: "provider.connect",
       suggested: !connected(),
+      hidden: !canConnect(),
       slash: {
         name: "connect",
       },
       onSelect: () => {
+        if (!canConnect()) return
         dialog.replace(() => <DialogProviderList />)
       },
       category: "Provider",

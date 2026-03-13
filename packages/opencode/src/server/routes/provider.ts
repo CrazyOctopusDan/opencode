@@ -10,6 +10,13 @@ import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { ModelPolicy } from "../../provider/model-policy"
 
+function localToken(header: string | undefined) {
+  if (!header?.startsWith("Bearer ")) return
+  const token = header.slice("Bearer ".length).trim()
+  if (!token) return
+  return token
+}
+
 export const ProviderRoutes = lazy(() =>
   new Hono()
     .get(
@@ -36,7 +43,8 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const policy = await ModelPolicy.snapshot()
+        const token = localToken(c.req.header("authorization"))
+        const policy = await ModelPolicy.snapshot(true, token)
         if (policy.enabled) {
           const providers = await Provider.list()
           return c.json({

@@ -7,8 +7,16 @@ import { mapValues } from "remeda"
 import { errors } from "../error"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
+import { ModelPolicy } from "@/provider/model-policy"
 
 const log = Log.create({ service: "server" })
+
+function localToken(header: string | undefined) {
+  if (!header?.startsWith("Bearer ")) return
+  const token = header.slice("Bearer ".length).trim()
+  if (!token) return
+  return token
+}
 
 export const ConfigRoutes = lazy(() =>
   new Hono()
@@ -54,6 +62,33 @@ export const ConfigRoutes = lazy(() =>
       validator("json", Config.Info),
       async (c) => {
         const config = c.req.valid("json")
+        const token = localToken(c.req.header("authorization"))
+        const policy = await ModelPolicy.snapshot(false, token)
+        if (policy.enabled) {
+          const allowed = new Set(policy.list.map((item) => item.id))
+          const provider = Object.fromEntries(
+            Object.entries(config.provider ?? {})
+              .filter(([providerID]) => allowed.has(providerID))
+              .map(([providerID, value]) => {
+                const item = policy.provider(providerID)!
+                const models = Object.fromEntries(
+                  Object.entries(value.models ?? {}).filter(([modelID]) => policy.allowedModel(providerID, modelID)),
+                )
+                return [
+                  providerID,
+                  {
+                    ...value,
+                    options: {
+                      ...(value.options ?? {}),
+                      baseURL: item.baseURL,
+                    },
+                    models,
+                  },
+                ]
+              }),
+          )
+          config.provider = provider
+        }
         await Config.update(config)
         return c.json(config)
       },
@@ -82,6 +117,8 @@ export const ConfigRoutes = lazy(() =>
       }),
       async (c) => {
         using _ = log.time("providers")
+        const token = localToken(c.req.header("authorization"))
+        await ModelPolicy.snapshot(true, token)
         const providers = await Provider.list().then((x) => mapValues(x, (item) => item))
         return c.json({
           providers: Object.values(providers),

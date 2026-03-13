@@ -24,6 +24,9 @@ export function DialogModel(props: { providerID?: string }) {
 
   const connected = useConnected()
   const providers = createDialogProviderOptions()
+  const canConnect = createMemo(
+    () => sync.data.provider_next.all.some((item) => !sync.data.provider_next.connected.includes(item.id)),
+  )
 
   const showExtra = createMemo(() => connected() && !props.providerID)
 
@@ -108,7 +111,7 @@ export function DialogModel(props: { providerID?: string }) {
       ),
     )
 
-    const popularProviders = !connected()
+    const popularProviders = !connected() && canConnect()
       ? pipe(
           providers(),
           map((option) => ({
@@ -139,13 +142,17 @@ export function DialogModel(props: { providerID?: string }) {
     <DialogSelect<ReturnType<typeof options>[number]["value"]>
       options={options()}
       keybind={[
-        {
-          keybind: keybind.all.model_provider_list?.[0],
-          title: connected() ? "Connect provider" : "View all providers",
-          onTrigger() {
-            dialog.replace(() => <DialogProvider />)
-          },
-        },
+        ...(canConnect()
+          ? [
+              {
+                keybind: keybind.all.model_provider_list?.[0],
+                title: connected() ? "Connect provider" : "View all providers",
+                onTrigger() {
+                  dialog.replace(() => <DialogProvider />)
+                },
+              },
+            ]
+          : []),
         {
           keybind: keybind.all.model_favorite_toggle?.[0],
           title: "Favorite",

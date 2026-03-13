@@ -6,12 +6,16 @@ import { TempoSession } from "@/server/tempo-session"
 const PolicyModel = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
+  apiKey: z.string().min(1).optional(),
+  contextLength: z.number().int().positive().optional(),
+  maxTokens: z.number().int().positive().optional(),
 })
 
 const PolicyProvider = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
   baseURL: z.string().url(),
+  apiKey: z.string().min(1).optional(),
   models: z.array(PolicyModel).min(1),
 })
 
@@ -77,9 +81,9 @@ async function fromRemote() {
   return parsePayload(body)
 }
 
-async function fromTempo() {
+async function fromTempo(localToken?: string) {
   if (!TempoApi.enabled()) return
-  const auth = TempoSession.get()
+  const auth = TempoSession.get(localToken)
   return TempoApi.listModels(auth)
 }
 
@@ -98,9 +102,9 @@ function fromEnv() {
 }
 
 export namespace ModelPolicy {
-  export async function snapshot(force = false) {
+  export async function snapshot(force = false, localToken?: string) {
     if (!force && Date.now() < expiresAt) return cache
-    const list = (await fromTempo()) ?? (await fromRemote()) ?? fromEnv() ?? []
+    const list = (await fromTempo(localToken)) ?? (await fromRemote()) ?? fromEnv() ?? []
     cache = makeSnapshot(list)
     expiresAt = Date.now() + refreshMs()
     return cache

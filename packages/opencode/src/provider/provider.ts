@@ -1026,19 +1026,31 @@ export namespace Provider {
       }
       if (item) {
         provider.options.baseURL = item.baseURL
+        if (!provider.key && item.apiKey) provider.key = item.apiKey
       }
 
       const configProvider = config.provider?.[providerID]
+      const policyModel = item ? new Map(item.models.map((value) => [value.id, value])) : undefined
 
       for (const [modelID, model] of Object.entries(provider.models)) {
         if (item && !policy.allowedModel(providerID, modelID)) {
           delete provider.models[modelID]
           continue
         }
+        const modelPolicy = policyModel?.get(modelID)
         model.api.id = model.api.id ?? model.id ?? modelID
         if (item) {
           model.api.npm = "@ai-sdk/openai-compatible"
           model.api.url = item.baseURL
+          if (modelPolicy?.contextLength) {
+            model.limit.context = modelPolicy.contextLength
+          }
+          if (modelPolicy?.maxTokens) {
+            model.limit.output = modelPolicy.maxTokens
+          }
+          if (modelPolicy?.apiKey && !provider.key) {
+            provider.key = modelPolicy.apiKey
+          }
         }
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]

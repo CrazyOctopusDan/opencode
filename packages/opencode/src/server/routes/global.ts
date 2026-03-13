@@ -18,6 +18,13 @@ import { TempoSession } from "../tempo-session"
 
 const log = Log.create({ service: "server" })
 
+function localToken(header: string | undefined) {
+  if (!header?.startsWith("Bearer ")) return
+  const token = header.slice("Bearer ".length).trim()
+  if (!token) return
+  return token
+}
+
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
 export const GlobalRoutes = lazy(() =>
@@ -79,7 +86,6 @@ export const GlobalRoutes = lazy(() =>
           const local = AuthToken.create(body.username)
           TempoSession.set(local.access_token, {
             token: upstream.token,
-            cookie: upstream.cookie,
           })
           return c.json(local)
         }
@@ -250,7 +256,8 @@ export const GlobalRoutes = lazy(() =>
       validator("json", Config.Info),
       async (c) => {
         const config = c.req.valid("json")
-        const policy = await ModelPolicy.snapshot()
+        const token = localToken(c.req.header("authorization"))
+        const policy = await ModelPolicy.snapshot(false, token)
         if (policy.enabled) {
           const allowed = new Set(policy.list.map((item) => item.id))
           const provider = Object.fromEntries(

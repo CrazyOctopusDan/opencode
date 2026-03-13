@@ -18,6 +18,7 @@ const popularProviderSet = new Set(popularProviders)
 export function useProviders() {
   const globalSync = useGlobalSync()
   const params = useParams()
+  const connectEnabled = import.meta.env.VITE_ALLOW_PROVIDER_CONNECT !== "false"
   const currentDirectory = createMemo(() => decode64(params.dir) ?? "")
   const providers = createMemo(() => {
     if (currentDirectory()) {
@@ -32,11 +33,16 @@ export function useProviders() {
     connected().filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input)),
   )
   const popular = createMemo(() => providers().all.filter((p) => popularProviderSet.has(p.id)))
+  const canConnect = createMemo(() => {
+    if (!connectEnabled) return false
+    return providers().all.some((item) => !connectedIDs().has(item.id))
+  })
   return {
     all: createMemo(() => providers().all),
     default: createMemo(() => providers().default),
     popular,
     connected,
     paid,
+    canConnect,
   }
 }
