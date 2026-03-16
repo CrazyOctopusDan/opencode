@@ -7,7 +7,7 @@ import { Tag } from "@opencode-ai/ui/tag"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { createMemo, createResource, type Component, Show } from "solid-js"
 import { useLocal } from "@/context/local"
-import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogSelectProvider } from "./dialog-select-provider"
@@ -16,25 +16,55 @@ import { useLanguage } from "@/context/language"
 
 export const DialogSelectModelUnpaid: Component = () => {
   const local = useLocal()
-  const sdk = useSDK()
+  const globalSDK = useGlobalSDK()
   const dialog = useDialog()
   const providers = useProviders()
   const language = useLanguage()
-  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
+  const [providerData] = createResource(async () => {
+    const started = Date.now()
+    try {
+      const result = await globalSDK.client.provider.list()
+      const data = result.data ?? { all: [], connected: [], default: {} }
+      const connected = new Set(data.connected)
+      const models = data.all
+        .filter((provider) => connected.has(provider.id))
+        .flatMap((provider) =>
+          Object.values(provider.models).map((model) => ({
+            ...model,
+            provider,
+            name: model.name.replace("(latest)", "").trim(),
+            latest: model.name.includes("(latest)"),
+          })),
+        )
+      return {
+        ok: true as const,
+        latency: Date.now() - started,
+        providers: data.all.length,
+        connected: data.connected.length,
+        models,
+        providerIDs: data.all.map((item) => item.id),
+      }
+    } catch (error) {
+      return {
+        ok: false as const,
+        latency: Date.now() - started,
+        providers: 0,
+        connected: 0,
+        models: [] as {
+          id: string
+          name: string
+          latest: boolean
+          provider: { id: string; name: string }
+        }[],
+        providerIDs: [] as string[],
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  })
   const models = createMemo(() => {
     const list = providerData()
-    if (!list) return []
-    const connected = new Set(list.connected)
-    return list.all
-      .filter((provider) => connected.has(provider.id))
-      .flatMap((provider) =>
-        Object.values(provider.models).map((model) => ({
-          ...model,
-          provider,
-          name: model.name.replace("(latest)", "").trim(),
-          latest: model.name.includes("(latest)"),
-        })),
-      )
+    if (!list?.ok) return []
+    return list.models
   })
 
   let listRef: ListRef | undefined
@@ -50,10 +80,27 @@ export const DialogSelectModelUnpaid: Component = () => {
     >
       <div class="flex flex-col gap-3 px-2.5" onKeyDown={handleKeyDown}>
         <div class="text-14-medium text-text-base px-2.5">{language.t("dialog.model.unpaid.freeModels.title")}</div>
+        <Show when={providerData.loading}>
+          <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
+        </Show>
+        <Show when={providerData()}>
+          {(state) => (
+            <div class="mx-2 px-2 py-1 rounded border border-border-weak-base bg-surface-raised-base text-11-regular text-text-weak">
+              <Show when={state().ok} fallback={<span>Company model API failed: {state().error}</span>}>
+                <span>
+                  Company model API ok · {state().latency}ms · providers {state().providers} · connected{" "}
+                  {state().connected} · models {state().models.length}
+                </span>
+              </Show>
+              <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
+            </div>
+          )}
+        </Show>
         <List
           class="[&_[data-slot=list-scroll]]:overflow-visible"
           ref={(ref) => (listRef = ref)}
           items={models}
+          emptyMessage={providerData.loading ? "Loading company models..." : language.t("dialog.model.empty")}
           current={local.model.current()}
           key={(x) => `${x.provider.id}:${x.id}`}
           itemWrapper={(item, node) => (

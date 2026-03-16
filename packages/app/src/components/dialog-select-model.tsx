@@ -2,7 +2,7 @@ import { Popover as Kobalte } from "@kobalte/core/popover"
 import { Component, ComponentProps, createMemo, createResource, JSX, Show, ValidComponent } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
-import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
@@ -26,67 +26,115 @@ const ModelList: Component<{
   action?: JSX.Element
 }> = (props) => {
   const local = useLocal()
-  const sdk = useSDK()
+  const globalSDK = useGlobalSDK()
   const language = useLanguage()
-  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
+  const [providerData] = createResource(async () => {
+    const started = Date.now()
+    try {
+      const result = await globalSDK.client.provider.list()
+      const data = result.data ?? { all: [], connected: [], default: {} }
+      const connected = new Set(data.connected)
+      const models = data.all
+        .filter((provider) => connected.has(provider.id))
+        .flatMap((provider) =>
+          Object.values(provider.models).map((model) => ({
+            ...model,
+            provider,
+            name: model.name.replace("(latest)", "").trim(),
+            latest: model.name.includes("(latest)"),
+          })),
+        )
+      return {
+        ok: true as const,
+        latency: Date.now() - started,
+        providers: data.all.length,
+        connected: data.connected.length,
+        models,
+        providerIDs: data.all.map((item) => item.id),
+      }
+    } catch (error) {
+      return {
+        ok: false as const,
+        latency: Date.now() - started,
+        providers: 0,
+        connected: 0,
+        models: [] as {
+          id: string
+          name: string
+          latest: boolean
+          provider: { id: string; name: string }
+        }[],
+        providerIDs: [] as string[],
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  })
 
   const models = createMemo(() => {
     const list = providerData()
-    if (!list) return []
-    const connected = new Set(list.connected)
-    return list.all
-      .filter((provider) => connected.has(provider.id))
-      .flatMap((provider) =>
-        Object.values(provider.models).map((model) => ({
-          ...model,
-          provider,
-          name: model.name.replace("(latest)", "").trim(),
-          latest: model.name.includes("(latest)"),
-        })),
-      )
+    if (!list?.ok) return []
+    return list.models
       .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
       .filter((m) => (props.provider ? m.provider.id === props.provider : true))
   })
 
   return (
-    <List
-      class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
-      emptyMessage={language.t("dialog.model.empty")}
-      key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
-      current={local.model.current()}
-      filterKeys={["name", "id"]}
-      sortBy={(a, b) => a.name.localeCompare(b.name)}
-      itemWrapper={(item, node) => (
-        <Tooltip
-          class="w-full"
-          placement="right-start"
-          gutter={12}
-          value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
-        >
-          {node}
-        </Tooltip>
-      )}
-      onSelect={(x) => {
-        local.model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
-          recent: true,
-        })
-        props.onSelect()
-      }}
-    >
-      {(i) => (
-        <div class="w-full flex items-center gap-x-2 text-13-regular">
-          <span class="truncate">{i.name}</span>
-          <Show when={isFree(i.provider.id, i.cost)}>
-            <Tag>{language.t("model.tag.free")}</Tag>
-          </Show>
-          <Show when={i.latest}>
-            <Tag>{language.t("model.tag.latest")}</Tag>
-          </Show>
-        </div>
-      )}
-    </List>
+    <div class="flex flex-col min-h-0 flex-1">
+      <Show when={providerData.loading}>
+        <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
+      </Show>
+      <Show when={providerData()}>
+        {(state) => (
+          <div class="mx-2 mb-2 px-2 py-1 rounded border border-border-weak-base bg-surface-raised-base text-11-regular text-text-weak">
+            <Show when={state().ok} fallback={<span>Company model API failed: {state().error}</span>}>
+              <span>
+                Company model API ok · {state().latency}ms · providers {state().providers} · connected {state().connected}
+                · models {state().models.length}
+              </span>
+            </Show>
+            <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
+          </div>
+        )}
+      </Show>
+      <List
+        class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
+        search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
+        emptyMessage={providerData.loading ? "Loading company models..." : language.t("dialog.model.empty")}
+        key={(x) => `${x.provider.id}:${x.id}`}
+        items={models}
+        current={local.model.current()}
+        filterKeys={["name", "id"]}
+        sortBy={(a, b) => a.name.localeCompare(b.name)}
+        itemWrapper={(item, node) => (
+          <Tooltip
+            class="w-full"
+            placement="right-start"
+            gutter={12}
+            value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
+          >
+            {node}
+          </Tooltip>
+        )}
+        onSelect={(x) => {
+          local.model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
+            recent: true,
+          })
+          props.onSelect()
+        }}
+      >
+        {(i) => (
+          <div class="w-full flex items-center gap-x-2 text-13-regular">
+            <span class="truncate">{i.name}</span>
+            <Show when={isFree(i.provider.id, i.cost)}>
+              <Tag>{language.t("model.tag.free")}</Tag>
+            </Show>
+            <Show when={i.latest}>
+              <Tag>{language.t("model.tag.latest")}</Tag>
+            </Show>
+          </div>
+        )}
+      </List>
+    </div>
   )
 }
 
