@@ -5,8 +5,9 @@ import { List, type ListRef } from "@opencode-ai/ui/list"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tag } from "@opencode-ai/ui/tag"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
-import { type Component, Show } from "solid-js"
+import { createMemo, createResource, type Component, Show } from "solid-js"
 import { useLocal } from "@/context/local"
+import { useSDK } from "@/context/sdk"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogSelectProvider } from "./dialog-select-provider"
@@ -15,9 +16,26 @@ import { useLanguage } from "@/context/language"
 
 export const DialogSelectModelUnpaid: Component = () => {
   const local = useLocal()
+  const sdk = useSDK()
   const dialog = useDialog()
   const providers = useProviders()
   const language = useLanguage()
+  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
+  const models = createMemo(() => {
+    const list = providerData()
+    if (!list) return []
+    const connected = new Set(list.connected)
+    return list.all
+      .filter((provider) => connected.has(provider.id))
+      .flatMap((provider) =>
+        Object.values(provider.models).map((model) => ({
+          ...model,
+          provider,
+          name: model.name.replace("(latest)", "").trim(),
+          latest: model.name.includes("(latest)"),
+        })),
+      )
+  })
 
   let listRef: ListRef | undefined
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -35,7 +53,7 @@ export const DialogSelectModelUnpaid: Component = () => {
         <List
           class="[&_[data-slot=list-scroll]]:overflow-visible"
           ref={(ref) => (listRef = ref)}
-          items={local.model.list}
+          items={models}
           current={local.model.current()}
           key={(x) => `${x.provider.id}:${x.id}`}
           itemWrapper={(item, node) => (
@@ -64,7 +82,6 @@ export const DialogSelectModelUnpaid: Component = () => {
           {(i) => (
             <div class="w-full flex items-center gap-x-2.5">
               <span>{i.name}</span>
-              <Tag>{language.t("model.tag.free")}</Tag>
               <Show when={i.latest}>
                 <Tag>{language.t("model.tag.latest")}</Tag>
               </Show>

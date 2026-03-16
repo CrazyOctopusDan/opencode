@@ -1,9 +1,10 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createMemo, JSX, Show, ValidComponent } from "solid-js"
+import { Component, ComponentProps, createMemo, createResource, JSX, Show, ValidComponent } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
+import { useSDK } from "@/context/sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -25,14 +26,27 @@ const ModelList: Component<{
   action?: JSX.Element
 }> = (props) => {
   const local = useLocal()
+  const sdk = useSDK()
   const language = useLanguage()
+  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
 
-  const models = createMemo(() =>
-    local.model
-      .list()
+  const models = createMemo(() => {
+    const list = providerData()
+    if (!list) return []
+    const connected = new Set(list.connected)
+    return list.all
+      .filter((provider) => connected.has(provider.id))
+      .flatMap((provider) =>
+        Object.values(provider.models).map((model) => ({
+          ...model,
+          provider,
+          name: model.name.replace("(latest)", "").trim(),
+          latest: model.name.includes("(latest)"),
+        })),
+      )
       .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
-  )
+      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
+  })
 
   return (
     <List
@@ -42,16 +56,8 @@ const ModelList: Component<{
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
       current={local.model.current()}
-      filterKeys={["provider.name", "name", "id"]}
+      filterKeys={["name", "id"]}
       sortBy={(a, b) => a.name.localeCompare(b.name)}
-      groupBy={(x) => x.provider.name}
-      sortGroupsBy={(a, b) => {
-        const aProvider = a.items[0].provider.id
-        const bProvider = b.items[0].provider.id
-        if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-        if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-        return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
-      }}
       itemWrapper={(item, node) => (
         <Tooltip
           class="w-full"

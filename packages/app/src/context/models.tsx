@@ -36,8 +36,12 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       }),
     )
 
+    const configOnly = import.meta.env.VITE_ALLOW_PROVIDER_CONNECT === "false"
     const available = createMemo(() =>
-      providers.connected().flatMap((p) =>
+      providers
+        .connected()
+        .filter((p) => (configOnly ? ("source" in p && p.source === "config") : true))
+        .flatMap((p) =>
         Object.values(p.models).map((m) => ({
           ...m,
           provider: p,

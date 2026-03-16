@@ -3,23 +3,42 @@ import { List } from "@opencode-ai/ui/list"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Button } from "@opencode-ai/ui/button"
-import type { Component } from "solid-js"
+import { createMemo, createResource, Show, type Component } from "solid-js"
 import { useLocal } from "@/context/local"
-import { popularProviders } from "@/hooks/use-providers"
+import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { useSDK } from "@/context/sdk"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
+  const sdk = useSDK()
+  const providers = useProviders()
   const language = useLanguage()
   const dialog = useDialog()
+  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
 
   const handleConnectProvider = () => {
     dialog.show(() => <DialogSelectProvider />)
   }
+  const models = createMemo(() => {
+    const list = providerData()
+    if (!list) return local.model.list().filter(() => false)
+    const connected = new Set(list.connected)
+    return list.all
+      .filter((provider) => connected.has(provider.id))
+      .flatMap((provider) =>
+        Object.values(provider.models).map((model) => ({
+          ...model,
+          provider,
+          name: model.name.replace("(latest)", "").trim(),
+          latest: model.name.includes("(latest)"),
+        })),
+      )
+  })
   const providerRank = (id: string) => popularProviders.indexOf(id)
-  const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
+  const providerList = (providerID: string) => models().filter((x) => x.provider.id === providerID)
   const providerVisible = (providerID: string) =>
     providerList(providerID).every((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
   const setProviderVisibility = (providerID: string, checked: boolean) => {
@@ -33,16 +52,18 @@ export const DialogManageModels: Component = () => {
       title={language.t("dialog.model.manage")}
       description={language.t("dialog.model.manage.description")}
       action={
-        <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
-          {language.t("command.provider.connect")}
-        </Button>
+        <Show when={providers.canConnect()}>
+          <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
+            {language.t("command.provider.connect")}
+          </Button>
+        </Show>
       }
     >
       <List
         search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true }}
         emptyMessage={language.t("dialog.model.empty")}
         key={(x) => `${x?.provider?.id}:${x?.id}`}
-        items={local.model.list()}
+        items={models()}
         filterKeys={["provider.name", "name", "id"]}
         sortBy={(a, b) => a.name.localeCompare(b.name)}
         groupBy={(x) => x.provider.id}
