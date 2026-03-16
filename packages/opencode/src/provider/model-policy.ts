@@ -29,6 +29,7 @@ const PolicyWrappedSchema = z.union([
 type Policy = z.infer<typeof PolicySchema>[number]
 type Snapshot = {
   enabled: boolean
+  locked: boolean
   list: Policy[]
   provider: (id: string) => Policy | undefined
   allowedProvider: (id: string) => boolean
@@ -39,6 +40,7 @@ const refreshMs = () => Math.max(5, Flag.OPENCODE_LOCKED_MODEL_POLICY_REFRESH_SE
 
 let cache: Snapshot = {
   enabled: false,
+  locked: false,
   list: [],
   provider: () => undefined,
   allowedProvider: () => false,
@@ -46,10 +48,11 @@ let cache: Snapshot = {
 }
 let expiresAt = 0
 
-function makeSnapshot(list: Policy[]): Snapshot {
+function makeSnapshot(list: Policy[], locked: boolean): Snapshot {
   const map = new Map(list.map((item) => [item.id, item]))
   return {
-    enabled: list.length > 0,
+    enabled: locked || list.length > 0,
+    locked,
     list,
     provider: (id) => map.get(id),
     allowedProvider: (id) => map.has(id),
@@ -104,8 +107,10 @@ function fromEnv() {
 export namespace ModelPolicy {
   export async function snapshot(force = false, localToken?: string) {
     if (!force && Date.now() < expiresAt) return cache
+    const auth = TempoSession.get(localToken)
+    const locked = TempoApi.enabled() && !!auth?.token
     const list = (await fromTempo(localToken)) ?? (await fromRemote()) ?? fromEnv() ?? []
-    cache = makeSnapshot(list)
+    cache = makeSnapshot(list, locked)
     expiresAt = Date.now() + refreshMs()
     return cache
   }
