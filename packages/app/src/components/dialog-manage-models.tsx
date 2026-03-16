@@ -9,6 +9,8 @@ import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useSDK } from "@/context/sdk"
+import { useAuth } from "@/context/auth"
+import { useNavigate } from "@solidjs/router"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
 export const DialogManageModels: Component = () => {
@@ -17,6 +19,8 @@ export const DialogManageModels: Component = () => {
   const providers = useProviders()
   const language = useLanguage()
   const dialog = useDialog()
+  const auth = useAuth()
+  const navigate = useNavigate()
   const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
 
   const handleConnectProvider = () => {
@@ -52,11 +56,23 @@ export const DialogManageModels: Component = () => {
       title={language.t("dialog.model.manage")}
       description={language.t("dialog.model.manage.description")}
       action={
-        <Show when={providers.canConnect()}>
-          <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
-            {language.t("command.provider.connect")}
+        <div class="flex items-center gap-2">
+          <Show when={providers.canConnect()}>
+            <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
+              {language.t("command.provider.connect")}
+            </Button>
+          </Show>
+          <Button
+            class="h-7 -my-1 text-14-medium text-text-danger-base"
+            variant="ghost"
+            tabIndex={-1}
+            onClick={() => {
+              void auth.logout().then(() => navigate("/login"))
+            }}
+          >
+            退出登录
           </Button>
-        </Show>
+        </div>
       }
     >
       <List

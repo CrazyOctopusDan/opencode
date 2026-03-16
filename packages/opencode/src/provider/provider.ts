@@ -1032,6 +1032,84 @@ export namespace Provider {
       const configProvider = config.provider?.[providerID]
       const policyModel = item ? new Map(item.models.map((value) => [value.id, value])) : undefined
 
+      if (item) {
+        const sample = Object.values(provider.models)[0]
+        for (const value of item.models) {
+          if (provider.models[value.id]) continue
+          const fallback: Model = {
+            id: value.id,
+            providerID,
+            api: {
+              id: value.id,
+              url: item.baseURL,
+              npm: "@ai-sdk/openai-compatible",
+            },
+            name: value.name ?? value.id,
+            family: "",
+            capabilities: {
+              temperature: true,
+              reasoning: false,
+              attachment: true,
+              toolcall: true,
+              input: {
+                text: true,
+                audio: false,
+                image: true,
+                video: false,
+                pdf: true,
+              },
+              output: {
+                text: true,
+                audio: false,
+                image: false,
+                video: false,
+                pdf: false,
+              },
+              interleaved: false,
+            },
+            cost: {
+              input: 0,
+              output: 0,
+              cache: {
+                read: 0,
+                write: 0,
+              },
+            },
+            limit: {
+              context: value.contextLength ?? 32000,
+              output: value.maxTokens ?? 8192,
+            },
+            status: "active",
+            options: {},
+            headers: {},
+            release_date: "",
+            variants: {},
+          }
+          const merged: Model = sample
+            ? {
+                ...sample,
+                id: value.id,
+                providerID,
+                api: {
+                  ...sample.api,
+                  id: value.id,
+                  url: item.baseURL,
+                  npm: "@ai-sdk/openai-compatible",
+                },
+                name: value.name ?? value.id,
+                limit: {
+                  ...sample.limit,
+                  context: value.contextLength ?? sample.limit.context,
+                  output: value.maxTokens ?? sample.limit.output,
+                },
+                status: "active",
+                release_date: sample.release_date ?? "",
+              }
+            : fallback
+          provider.models[value.id] = merged
+        }
+      }
+
       for (const [modelID, model] of Object.entries(provider.models)) {
         if (item && !policy.allowedModel(providerID, modelID)) {
           delete provider.models[modelID]

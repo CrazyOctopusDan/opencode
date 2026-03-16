@@ -11,10 +11,12 @@ import { Tag } from "@opencode-ai/ui/tag"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { useNavigate } from "@solidjs/router"
 import { DialogSelectProvider } from "./dialog-select-provider"
 import { DialogManageModels } from "./dialog-manage-models"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useAuth } from "@/context/auth"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -246,6 +248,8 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
   const providers = useProviders()
+  const auth = useAuth()
+  const navigate = useNavigate()
 
   return (
     <Dialog
@@ -270,6 +274,15 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         onClick={() => dialog.show(() => <DialogManageModels />)}
       >
         {language.t("dialog.model.manage")}
+      </Button>
+      <Button
+        variant="ghost"
+        class="ml-3 -mt-3 mb-6 text-text-danger-base self-start"
+        onClick={() => {
+          void auth.logout().then(() => navigate("/login"))
+        }}
+      >
+        退出登录
       </Button>
     </Dialog>
   )

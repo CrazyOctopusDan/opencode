@@ -240,7 +240,7 @@ export namespace TempoApi {
     })
     const payload = await res.json().catch(() => ({}))
     const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
-    if (!res.ok || success === false) return []
+    if (!res.ok || success === false) return
     return normalizePolicy(payload)
   }
 }

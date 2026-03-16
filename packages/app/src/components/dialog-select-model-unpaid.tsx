@@ -2,6 +2,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List, type ListRef } from "@opencode-ai/ui/list"
+import { useNavigate } from "@solidjs/router"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tag } from "@opencode-ai/ui/tag"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
@@ -13,13 +14,16 @@ import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogSelectProvider } from "./dialog-select-provider"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useAuth } from "@/context/auth"
 
 export const DialogSelectModelUnpaid: Component = () => {
   const local = useLocal()
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
+  const navigate = useNavigate()
   const providers = useProviders()
   const language = useLanguage()
+  const auth = useAuth()
   const [providerData] = createResource(async () => {
     const started = Date.now()
     try {
@@ -135,6 +139,15 @@ export const DialogSelectModelUnpaid: Component = () => {
             </div>
           )}
         </List>
+        <Button
+          variant="ghost"
+          class="ml-2 mb-1 text-text-danger-base self-start"
+          onClick={() => {
+            void auth.logout().then(() => navigate("/login"))
+          }}
+        >
+          退出登录
+        </Button>
       </div>
       <Show when={providers.canConnect()}>
         <div class="px-1.5 pb-1.5">
