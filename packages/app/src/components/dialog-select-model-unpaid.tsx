@@ -49,6 +49,10 @@ export const DialogSelectModelUnpaid: Component = () => {
         providerIDs: data.all.map((item) => item.id),
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.toLowerCase().includes("unauthorized")) {
+        void auth.logout().then(() => navigate("/login"))
+      }
       return {
         ok: false as const,
         latency: Date.now() - started,
@@ -61,7 +65,7 @@ export const DialogSelectModelUnpaid: Component = () => {
           provider: { id: string; name: string }
         }[],
         providerIDs: [] as string[],
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       }
     }
   })

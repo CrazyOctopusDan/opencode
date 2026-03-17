@@ -30,6 +30,8 @@ const ModelList: Component<{
   const local = useLocal()
   const globalSDK = useGlobalSDK()
   const language = useLanguage()
+  const auth = useAuth()
+  const navigate = useNavigate()
   const [providerData] = createResource(async () => {
     const started = Date.now()
     try {
@@ -55,6 +57,10 @@ const ModelList: Component<{
         providerIDs: data.all.map((item) => item.id),
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.toLowerCase().includes("unauthorized")) {
+        void auth.logout().then(() => navigate("/login"))
+      }
       return {
         ok: false as const,
         latency: Date.now() - started,
@@ -67,7 +73,7 @@ const ModelList: Component<{
           provider: { id: string; name: string }
         }[],
         providerIDs: [] as string[],
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       }
     }
   })

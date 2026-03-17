@@ -1,5 +1,6 @@
 import { Flag } from "@/flag/flag"
 import { SM2 } from "@/util/sm2"
+import { createHash } from "crypto"
 
 const loginPath = "/ai/data/api/auth/login"
 const modelListPath = "/ai/data/api/llm/list"
@@ -20,6 +21,18 @@ type PolicyProvider = {
   baseURL: string;
   apiKey?: string;
   models: PolicyModel[];
+}
+
+function providerID(value: { provider: string; baseURL: string; apiKey?: string }) {
+  const digest = createHash("sha1")
+    .update(`${value.provider}\n${value.baseURL}\n${value.apiKey ?? ""}`)
+    .digest("hex")
+    .slice(0, 10)
+  const base = value.provider
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return `${base || "tempo"}-${digest}`
 }
 
 function base() {
@@ -155,10 +168,11 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
   if (rows.length > 0) {
     const grouped = new Map<string, PolicyProvider>()
     for (const row of rows) {
-      const providerID = typeof row.provider === "string" && row.provider.length > 0 ? row.provider : "tempo"
+      const provider = typeof row.provider === "string" && row.provider.length > 0 ? row.provider : "tempo"
       const baseURL = typeof row.apiBase === "string" && row.apiBase.length > 0 ? row.apiBase : fallbackBaseURL
       const apiKey = typeof row.apiKey === "string" && row.apiKey.length > 0 ? row.apiKey : undefined
-      const key = `${providerID}::${baseURL}::${apiKey ?? ""}`
+      const key = `${provider}::${baseURL}::${apiKey ?? ""}`
+      const id = providerID({ provider, baseURL, apiKey })
       const model = normalizeModel(row)
       if (!model) continue
       const current = grouped.get(key)
@@ -167,8 +181,8 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
         continue
       }
       grouped.set(key, {
-        id: providerID,
-        name: providerID,
+        id,
+        name: provider,
         baseURL,
         ...(apiKey ? { apiKey } : {}),
         models: [model],
