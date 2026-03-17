@@ -9,6 +9,7 @@ import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { ModelPolicy } from "../../provider/model-policy"
+import { TempoApi } from "../tempo-api"
 
 function localToken(header: string | undefined) {
   if (!header?.startsWith("Bearer ")) return
@@ -74,6 +75,38 @@ export const ProviderRoutes = lazy(() =>
           all: Object.values(providers),
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
           connected: Object.keys(connected),
+        })
+      },
+    )
+    .get(
+      "/debug/tempo",
+      describeRoute({
+        summary: "Get tempo debug trace",
+        description: "Return last upstream tempo API trace and current policy snapshot.",
+        operationId: "provider.debug.tempo",
+        responses: {
+          200: {
+            description: "Tempo debug payload",
+            content: {
+              "application/json": {
+                schema: resolver(z.any()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const token = localToken(c.req.header("authorization"))
+        const policy = await ModelPolicy.snapshot(false, token)
+        return c.json({
+          policy: {
+            enabled: policy.enabled,
+            locked: policy.locked,
+            providers: policy.list.length,
+            models: policy.list.reduce((acc, item) => acc + item.models.length, 0),
+            providerIDs: policy.list.map((item) => item.id),
+          },
+          tempo: TempoApi.trace(),
         })
       },
     )

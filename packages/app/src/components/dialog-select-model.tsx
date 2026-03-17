@@ -77,6 +77,28 @@ const ModelList: Component<{
       }
     }
   })
+  const [debugTempo] = createResource(async () => {
+    const token = auth.token()
+    if (!token) return { ok: false, error: "Missing local auth token" }
+    try {
+      const res = await fetch(`${globalSDK.url}/provider/debug/tempo`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const payload = await res.json().catch(() => undefined)
+      return {
+        ok: res.ok,
+        status: res.status,
+        payload,
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  })
 
   const models = createMemo(() => {
     const list = providerData()
@@ -101,6 +123,13 @@ const ModelList: Component<{
               </span>
             </Show>
             <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
+            <Show when={debugTempo()}>
+              {(debug) => (
+                <pre class="mt-2 whitespace-pre-wrap break-all">
+                  {JSON.stringify({ debug_tempo: debug() }, null, 2)}
+                </pre>
+              )}
+            </Show>
           </div>
         )}
       </Show>

@@ -23,6 +23,38 @@ type PolicyProvider = {
   models: PolicyModel[];
 }
 
+type TempoTrace = {
+  at: string
+  endpoint: "login" | "model-list"
+  url: string
+  env: {
+    mode: string
+    base: string
+  }
+  auth: {
+    hasToken: boolean
+    cookiePreview?: string
+  }
+  http?: {
+    status: number
+    ok: boolean
+  }
+  parsed?: {
+    success?: unknown
+    code?: unknown
+    message?: unknown
+    dataLength?: number
+  }
+  payload?: unknown
+  normalized?: {
+    providers: number
+    models: number
+  }
+  error?: string
+}
+
+let lastTrace: TempoTrace | undefined
+
 function providerID(value: { provider: string; baseURL: string; apiKey?: string }) {
   const digest = createHash("sha1")
     .update(`${value.provider}\n${value.baseURL}\n${value.apiKey ?? ""}`)
@@ -42,6 +74,16 @@ function base() {
     return (Flag.OPENCODE_TEMPO_DEV_BASE_URL ?? defaultDevBaseURL).replace(/\/+$/, "")
   }
   return (Flag.OPENCODE_TEMPO_PROD_BASE_URL ?? defaultProdBaseURL).replace(/\/+$/, "")
+}
+
+function mode() {
+  if (Flag.OPENCODE_TEMPO_BASE_URL?.trim()) return "explicit_base_url"
+  return (Flag.OPENCODE_TEMPO_ENV ?? "prod").toLowerCase()
+}
+
+function cookiePreview(value: string) {
+  if (value.length <= 18) return value
+  return `${value.slice(0, 12)}...${value.slice(-6)}`
 }
 
 function extractToken(value: unknown): string | undefined {
@@ -219,42 +261,115 @@ export namespace TempoApi {
     const url = `${base()}${loginPath}`
     const enPasswd = SM2.encryptPassword(input.password, Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY)
     const body = { username: input.username, enPasswd }
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
-    const payload = await res.json().catch(() => ({}))
-    const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
-    if (!res.ok || success === false) {
-      throw new Error(extractMessage(payload) ?? "Tempo login failed")
-    }
-    const token = extractToken(payload)
-    if (!token) {
-      throw new Error(extractMessage(payload) ?? "Tempo login token missing")
-    }
-    return {
-      payload,
-      token,
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+      const payload = await res.json().catch(() => ({}))
+      const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
+      lastTrace = {
+        at: new Date().toISOString(),
+        endpoint: "login",
+        url,
+        env: { mode: mode(), base: base() },
+        auth: { hasToken: false },
+        http: { status: res.status, ok: res.ok },
+        parsed: {
+          success,
+          code: payload && typeof payload === "object" ? (payload as Record<string, unknown>).code : undefined,
+          message: extractMessage(payload),
+          dataLength: asArray(payload).length,
+        },
+        payload,
+      }
+      if (!res.ok || success === false) {
+        throw new Error(extractMessage(payload) ?? "Tempo login failed")
+      }
+      const token = extractToken(payload)
+      if (!token) {
+        throw new Error(extractMessage(payload) ?? "Tempo login token missing")
+      }
+      return {
+        payload,
+        token,
+      }
+    } catch (error) {
+      lastTrace = {
+        at: new Date().toISOString(),
+        endpoint: "login",
+        url,
+        env: { mode: mode(), base: base() },
+        auth: { hasToken: false },
+        error: error instanceof Error ? error.message : String(error),
+      }
+      throw error
     }
   }
 
   export async function listModels(auth?: { token?: string; cookie?: string }) {
     const headers = new Headers()
+    let cookie = ""
     if (auth?.token) {
-      headers.set("Cookie", `crown.token_key=${auth.token}`)
+      cookie = `crown.token_key=${auth.token}`
+      headers.set("Cookie", cookie)
     } else if (auth?.cookie) {
+      cookie = auth.cookie
       headers.set("Cookie", auth.cookie)
     }
-    const res = await fetch(`${base()}${modelListPath}`, {
-      method: "GET",
-      headers,
-    })
-    const payload = await res.json().catch(() => ({}))
-    const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
-    if (!res.ok || success === false) return
-    return normalizePolicy(payload)
+    const url = `${base()}${modelListPath}`
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers,
+      })
+      const payload = await res.json().catch(() => ({}))
+      const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
+      const normalized = !res.ok || success === false ? [] : normalizePolicy(payload)
+      lastTrace = {
+        at: new Date().toISOString(),
+        endpoint: "model-list",
+        url,
+        env: { mode: mode(), base: base() },
+        auth: {
+          hasToken: Boolean(auth?.token),
+          ...(cookie ? { cookiePreview: cookiePreview(cookie) } : {}),
+        },
+        http: { status: res.status, ok: res.ok },
+        parsed: {
+          success,
+          code: payload && typeof payload === "object" ? (payload as Record<string, unknown>).code : undefined,
+          message: extractMessage(payload),
+          dataLength: asArray(payload).length,
+        },
+        payload,
+        normalized: {
+          providers: normalized.length,
+          models: normalized.reduce((acc, item) => acc + item.models.length, 0),
+        },
+      }
+      if (!res.ok || success === false) return
+      return normalized
+    } catch (error) {
+      lastTrace = {
+        at: new Date().toISOString(),
+        endpoint: "model-list",
+        url,
+        env: { mode: mode(), base: base() },
+        auth: {
+          hasToken: Boolean(auth?.token),
+          ...(cookie ? { cookiePreview: cookiePreview(cookie) } : {}),
+        },
+        error: error instanceof Error ? error.message : String(error),
+      }
+      return
+    }
+  }
+
+  export function trace() {
+    return lastTrace
   }
 }
