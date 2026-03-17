@@ -46,12 +46,23 @@ export const ProviderRoutes = lazy(() =>
       async (c) => {
         const token = localToken(c.req.header("authorization"))
         const policy = await ModelPolicy.snapshot(true, token)
+        const debugTempo = {
+          policy: {
+            enabled: policy.enabled,
+            locked: policy.locked,
+            providers: policy.list.length,
+            models: policy.list.reduce((acc, item) => acc + item.models.length, 0),
+            providerIDs: policy.list.map((item) => item.id),
+          },
+          tempo: TempoApi.trace(),
+        }
         if (policy.enabled) {
           const providers = await Provider.list()
           return c.json({
             all: Object.values(providers),
             default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
             connected: Object.keys(providers),
+            debug_tempo: debugTempo,
           })
         }
         const config = await Config.get()
@@ -75,6 +86,7 @@ export const ProviderRoutes = lazy(() =>
           all: Object.values(providers),
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
           connected: Object.keys(connected),
+          debug_tempo: debugTempo,
         })
       },
     )

@@ -36,7 +36,9 @@ const ModelList: Component<{
     const started = Date.now()
     try {
       const result = await globalSDK.client.provider.list()
-      const data = result.data ?? { all: [], connected: [], default: {} }
+      const data = (result.data ?? { all: [], connected: [], default: {} }) as (typeof result.data & {
+        debug_tempo?: unknown
+      })
       const connected = new Set(data.connected)
       const models = data.all
         .filter((provider) => connected.has(provider.id))
@@ -55,6 +57,7 @@ const ModelList: Component<{
         connected: data.connected.length,
         models,
         providerIDs: data.all.map((item) => item.id),
+        debug_tempo: data.debug_tempo,
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -74,28 +77,6 @@ const ModelList: Component<{
         }[],
         providerIDs: [] as string[],
         error: message,
-      }
-    }
-  })
-  const [debugTempo] = createResource(async () => {
-    const token = auth.token()
-    if (!token) return { ok: false, error: "Missing local auth token" }
-    try {
-      const res = await fetch(`${globalSDK.url}/provider/debug/tempo`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      const payload = await res.json().catch(() => undefined)
-      return {
-        ok: res.ok,
-        status: res.status,
-        payload,
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
       }
     }
   })
@@ -123,13 +104,9 @@ const ModelList: Component<{
               </span>
             </Show>
             <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
-            <Show when={debugTempo()}>
-              {(debug) => (
-                <pre class="mt-2 whitespace-pre-wrap break-all">
-                  {JSON.stringify({ debug_tempo: debug() }, null, 2)}
-                </pre>
-              )}
-            </Show>
+            <pre class="mt-2 whitespace-pre-wrap break-all">
+              {JSON.stringify({ debug_tempo: state().debug_tempo }, null, 2)}
+            </pre>
           </div>
         )}
       </Show>
