@@ -314,7 +314,7 @@ export namespace TempoApi {
     const headers = new Headers()
     let cookie = ""
     if (auth?.token) {
-      cookie = `crown.token_key=${auth.token}`
+      cookie = `crowd.token_key=${auth.token}`
       headers.set("Cookie", cookie)
     } else if (auth?.cookie) {
       cookie = auth.cookie
