@@ -1055,9 +1055,10 @@ export namespace Provider {
       if (item) {
         const sample = Object.values(provider.models)[0]
         for (const value of item.models) {
-          if (provider.models[value.id]) continue
+          const id = ModelID.make(value.id)
+          if (provider.models[id]) continue
           const fallback: Model = {
-            id: value.id,
+            id,
             providerID,
             api: {
               id: value.id,
@@ -1108,7 +1109,7 @@ export namespace Provider {
           const merged: Model = sample
             ? {
                 ...sample,
-                id: value.id,
+                id,
                 providerID,
                 api: {
                   ...sample.api,
@@ -1126,7 +1127,7 @@ export namespace Provider {
                 release_date: sample.release_date ?? "",
               }
             : fallback
-          provider.models[value.id] = merged
+          provider.models[id] = merged
         }
       }
 
