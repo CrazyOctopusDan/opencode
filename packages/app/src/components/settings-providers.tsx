@@ -10,12 +10,14 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogSelectProvider } from "./dialog-select-provider"
+import { SettingsList } from "./settings-list"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
 
 const PROVIDER_NOTES = [
   { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
+  { match: (id: string) => id === "opencode-go", key: "dialog.provider.opencodeGo.tagline" },
   { match: (id: string) => id === "anthropic", key: "dialog.provider.anthropic.note" },
   { match: (id: string) => id.startsWith("github-copilot"), key: "dialog.provider.copilot.note" },
   { match: (id: string) => id === "openai", key: "dialog.provider.openai.note" },
@@ -134,7 +136,7 @@ export const SettingsProviders: Component = () => {
       <div class="flex flex-col gap-8 max-w-[720px]">
         <div class="flex flex-col gap-1" data-component="connected-providers-section">
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.connected")}</h3>
-          <div class="bg-surface-raised-base px-4 rounded-lg">
+          <SettingsList>
             <Show
               when={connected().length > 0}
               fallback={
@@ -167,13 +169,13 @@ export const SettingsProviders: Component = () => {
                 )}
               </For>
             </Show>
-          </div>
+          </SettingsList>
         </div>
 
         <Show when={providers.canConnect()}>
           <div class="flex flex-col gap-1">
             <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.popular")}</h3>
-            <div class="bg-surface-raised-base px-4 rounded-lg">
+            <SettingsList>
               <For each={popular()}>
                 {(item) => (
                   <div class="flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
@@ -182,18 +184,14 @@ export const SettingsProviders: Component = () => {
                         <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
                         <span class="text-14-medium text-text-strong">{item.name}</span>
                         <Show when={item.id === "opencode"}>
-                          <span class="text-14-regular text-text-weak">
-                            {language.t("dialog.provider.opencode.tagline")}
-                          </span>
+                          <span class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</span>
                         </Show>
                         <Show when={item.id === "opencode"}>
                           <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
                         </Show>
                         <Show when={item.id === "opencode-go"}>
                           <>
-                            <span class="text-14-regular text-text-weak">
-                              {language.t("dialog.provider.opencodeGo.tagline")}
-                            </span>
+                            <span class="text-14-regular text-text-weak">{language.t("dialog.provider.opencodeGo.tagline")}</span>
                             <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
                           </>
                         </Show>
@@ -215,7 +213,7 @@ export const SettingsProviders: Component = () => {
                   </div>
                 )}
               </For>
-            </div>
+            </SettingsList>
 
             <Button
               variant="ghost"

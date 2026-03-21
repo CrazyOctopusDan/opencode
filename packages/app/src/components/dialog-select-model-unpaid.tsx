@@ -16,8 +16,10 @@ import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { useAuth } from "@/context/auth"
 
-export const DialogSelectModelUnpaid: Component = () => {
-  const local = useLocal()
+type ModelState = ReturnType<typeof useLocal>["model"]
+
+export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props) => {
+  const model = props.model ?? useLocal().model
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
   const navigate = useNavigate()
@@ -115,7 +117,7 @@ export const DialogSelectModelUnpaid: Component = () => {
           ref={(ref) => (listRef = ref)}
           items={models}
           emptyMessage={providerData.loading ? "Loading company models..." : language.t("dialog.model.empty")}
-          current={local.model.current()}
+          current={model.current()}
           key={(x) => `${x.provider.id}:${x.id}`}
           itemWrapper={(item, node) => (
             <Tooltip
@@ -134,7 +136,7 @@ export const DialogSelectModelUnpaid: Component = () => {
             </Tooltip>
           )}
           onSelect={(x) => {
-            local.model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
+            model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
               recent: true,
             })
             dialog.close()

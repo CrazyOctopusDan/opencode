@@ -4,6 +4,7 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, onCleanup } from "solid-js"
 import z from "zod"
 import { createSdkForServer } from "@/utils/server"
+import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { useAuth } from "./auth"
@@ -15,6 +16,7 @@ const abortError = z.object({
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
   init: () => {
+    const language = useLanguage()
     const server = useServer()
     const platform = usePlatform()
     const auth = useAuth()
@@ -32,7 +34,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     })()
 
     const currentServer = server.current
-    if (!currentServer) throw new Error("No server available")
+    if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
 
     const eventSdk = createSdkForServer({
       signal: abort.signal,
@@ -222,7 +224,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       event: emitter,
       createClient(opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">) {
         const s = server.current
-        if (!s) throw new Error("Server not available")
+        if (!s) throw new Error(language.t("error.globalSDK.serverNotAvailable"))
         return createSdkForServer({
           server: s.http,
           fetch: platform.fetch,
