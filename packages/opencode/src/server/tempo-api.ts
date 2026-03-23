@@ -323,7 +323,7 @@ export namespace TempoApi {
     const url = `${base()}${modelListPath}`
     try {
       const res = await fetch(url, {
-        method: "GET",
+        method: "POST",
         headers,
       })
       const payload = await res.json().catch(() => ({}))
