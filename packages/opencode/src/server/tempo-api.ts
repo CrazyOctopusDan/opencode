@@ -1,6 +1,5 @@
 import { Flag } from "@/flag/flag"
 import { SM2 } from "@/util/sm2"
-import { createHash } from "crypto"
 
 const loginPath = "/ai/data/api/auth/login"
 const modelListPath = "/ai/data/api/llm/list"
@@ -10,6 +9,7 @@ const defaultProdBaseURL = "https://tempo.travelsky.com.cn/"
 type PolicyModel = {
   id: string;
   name: string;
+  baseURL?: string;
   apiKey?: string;
   contextLength?: number;
   maxTokens?: number;
@@ -50,23 +50,16 @@ type TempoTrace = {
   normalized?: {
     providers: number
     models: number
+    provider_ids?: string[]
+    models_list?: {
+      id: string
+      baseURL?: string
+    }[]
   }
   error?: string
 }
 
 let lastTrace: TempoTrace | undefined
-
-function providerID(value: { provider: string; baseURL: string; apiKey?: string }) {
-  const digest = createHash("sha1")
-    .update(`${value.provider}\n${value.baseURL}\n${value.apiKey ?? ""}`)
-    .digest("hex")
-    .slice(0, 10)
-  const base = value.provider
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-  return `${base || "tempo"}-${digest}`
-}
 
 function base() {
   if (Flag.OPENCODE_TEMPO_BASE_URL) return Flag.OPENCODE_TEMPO_BASE_URL.replace(/\/+$/, "")
@@ -134,6 +127,13 @@ function normalizeModel(item: Record<string, unknown>) {
     (value) => typeof value === "string" && value.length > 0,
   )
   const apiKey = typeof item.apiKey === "string" && item.apiKey.length > 0 ? item.apiKey : undefined
+  const baseURL = typeof item.apiBase === "string" && item.apiBase.length > 0
+    ? item.apiBase
+    : typeof item.baseURL === "string" && item.baseURL.length > 0
+      ? item.baseURL
+      : typeof item.baseUrl === "string" && item.baseUrl.length > 0
+        ? item.baseUrl
+        : undefined
   const contextLength = typeof item.contextLength === "number" && Number.isFinite(item.contextLength) && item.contextLength > 0
     ? Math.floor(item.contextLength)
     : undefined
@@ -147,6 +147,7 @@ function normalizeModel(item: Record<string, unknown>) {
   return {
     id,
     name: typeof name === "string" ? name : id,
+    ...(baseURL ? { baseURL } : {}),
     ...(apiKey ? { apiKey } : {}),
     ...(contextLength ? { contextLength } : {}),
     ...(maxTokens ? { maxTokens } : {}),
@@ -209,30 +210,36 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
     .filter((item) => typeof item.provider === "string" || typeof item.apiBase === "string" || typeof item.model === "string")
 
   if (rows.length > 0) {
-    const grouped = new Map<string, PolicyProvider>()
+    const grouped = new Map<string, PolicyModel>()
+    const urls = new Set<string>()
     for (const row of rows) {
-      const provider = typeof row.provider === "string" && row.provider.length > 0 ? row.provider : "tempo"
       const baseURL = typeof row.apiBase === "string" && row.apiBase.length > 0 ? row.apiBase : fallbackBaseURL
-      const apiKey = typeof row.apiKey === "string" && row.apiKey.length > 0 ? row.apiKey : undefined
-      const key = `${provider}::${baseURL}::${apiKey ?? ""}`
-      const id = providerID({ provider, baseURL, apiKey })
+      urls.add(baseURL)
       const model = normalizeModel(row)
       if (!model) continue
-      const current = grouped.get(key)
+      const current = grouped.get(model.id)
       if (current) {
-        if (!current.models.some((item) => item.id === model.id)) current.models.push(model)
+        if (!current.baseURL) current.baseURL = model.baseURL ?? baseURL
+        if (!current.apiKey) current.apiKey = model.apiKey
         continue
       }
-      grouped.set(key, {
-        id,
-        name: provider,
-        baseURL,
-        ...(apiKey ? { apiKey } : {}),
-        models: [model],
+      grouped.set(model.id, {
+        ...model,
+        baseURL: model.baseURL ?? baseURL,
       })
     }
-    const providers = [...grouped.values()].filter((item) => item.models.length > 0)
-    if (providers.length > 0) return providers
+    const models = [...grouped.values()]
+    if (models.length > 0) {
+      return [
+        {
+          id: "travelSky",
+          name: "travelSky",
+          baseURL: urls.size === 1 ? [...urls][0] : fallbackBaseURL,
+          models,
+          ...(models.find((item) => item.apiKey)?.apiKey ? { apiKey: models.find((item) => item.apiKey)?.apiKey } : {}),
+        },
+      ]
+    }
   }
 
   const list = sources.flatMap((source) => asArray(source))
@@ -355,6 +362,13 @@ export namespace TempoApi {
         normalized: {
           providers: normalized.length,
           models: normalized.reduce((acc, item) => acc + item.models.length, 0),
+          provider_ids: normalized.map((item) => item.id),
+          models_list: normalized.flatMap((item) =>
+            item.models.map((model) => ({
+              id: model.id,
+              ...(model.baseURL ? { baseURL: model.baseURL } : {}),
+            }))
+          ),
         },
       }
       if (!res.ok || success === false) return

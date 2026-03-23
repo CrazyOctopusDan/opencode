@@ -6,6 +6,7 @@ import { TempoSession } from "@/server/tempo-session"
 const PolicyModel = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
+  baseURL: z.string().url().optional(),
   apiKey: z.string().min(1).optional(),
   contextLength: z.number().int().positive().optional(),
   maxTokens: z.number().int().positive().optional(),

@@ -1033,6 +1033,22 @@ export namespace Provider {
       mergeProvider(providerID, partial)
     }
 
+    if (policy.enabled) {
+      for (const item of policy.list) {
+        const providerID = ProviderID.make(item.id)
+        if (providers[providerID]) continue
+        providers[providerID] = {
+          id: providerID,
+          source: "custom",
+          name: item.name ?? item.id,
+          env: [],
+          options: {},
+          ...(item.apiKey ? { key: item.apiKey } : {}),
+          models: {},
+        }
+      }
+    }
+
     for (const [id, provider] of Object.entries(providers)) {
       const providerID = ProviderID.make(id)
       if (!isProviderAllowed(providerID)) {
@@ -1045,7 +1061,9 @@ export namespace Provider {
         continue
       }
       if (item) {
-        provider.options.baseURL = item.baseURL
+        const urls = [...new Set(item.models.map((value) => value.baseURL ?? item.baseURL))]
+        if (urls.length === 1 && urls[0]) provider.options.baseURL = urls[0]
+        if (urls.length > 1) delete provider.options.baseURL
         if (!provider.key && item.apiKey) provider.key = item.apiKey
       }
 
@@ -1062,7 +1080,7 @@ export namespace Provider {
             providerID,
             api: {
               id: value.id,
-              url: item.baseURL,
+              url: value.baseURL ?? item.baseURL,
               npm: "@ai-sdk/openai-compatible",
             },
             name: value.name ?? value.id,
@@ -1114,7 +1132,7 @@ export namespace Provider {
                 api: {
                   ...sample.api,
                   id: value.id,
-                  url: item.baseURL,
+                  url: value.baseURL ?? item.baseURL,
                   npm: "@ai-sdk/openai-compatible",
                 },
                 name: value.name ?? value.id,
@@ -1140,7 +1158,7 @@ export namespace Provider {
         model.api.id = model.api.id ?? model.id ?? modelID
         if (item) {
           model.api.npm = "@ai-sdk/openai-compatible"
-          model.api.url = item.baseURL
+          model.api.url = modelPolicy?.baseURL ?? item.baseURL
           if (modelPolicy?.contextLength) {
             model.limit.context = modelPolicy.contextLength
           }
