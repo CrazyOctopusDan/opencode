@@ -27,6 +27,7 @@ type TempoTrace = {
   at: string
   endpoint: "login" | "model-list"
   url: string
+  method: "POST"
   env: {
     mode: string
     base: string
@@ -275,6 +276,7 @@ export namespace TempoApi {
         at: new Date().toISOString(),
         endpoint: "login",
         url,
+        method: "POST",
         env: { mode: mode(), base: base() },
         auth: { hasToken: false },
         http: { status: res.status, ok: res.ok },
@@ -302,6 +304,7 @@ export namespace TempoApi {
         at: new Date().toISOString(),
         endpoint: "login",
         url,
+        method: "POST",
         env: { mode: mode(), base: base() },
         auth: { hasToken: false },
         error: error instanceof Error ? error.message : String(error),
@@ -312,6 +315,7 @@ export namespace TempoApi {
 
   export async function listModels(auth?: { token?: string; cookie?: string }) {
     const headers = new Headers()
+    headers.set("Content-Type", "application/json")
     let cookie = ""
     if (auth?.token) {
       cookie = `crowd.token_key=${auth.token}`
@@ -325,6 +329,7 @@ export namespace TempoApi {
       const res = await fetch(url, {
         method: "POST",
         headers,
+        body: JSON.stringify({}),
       })
       const payload = await res.json().catch(() => ({}))
       const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined
@@ -333,6 +338,7 @@ export namespace TempoApi {
         at: new Date().toISOString(),
         endpoint: "model-list",
         url,
+        method: "POST",
         env: { mode: mode(), base: base() },
         auth: {
           hasToken: Boolean(auth?.token),
@@ -358,6 +364,7 @@ export namespace TempoApi {
         at: new Date().toISOString(),
         endpoint: "model-list",
         url,
+        method: "POST",
         env: { mode: mode(), base: base() },
         auth: {
           hasToken: Boolean(auth?.token),
