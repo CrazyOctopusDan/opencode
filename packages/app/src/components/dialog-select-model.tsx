@@ -97,22 +97,6 @@ const ModelList: Component<{
       <Show when={providerData.loading}>
         <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
       </Show>
-      <Show when={providerData()}>
-        {(state) => (
-          <div class="mx-2 mb-2 px-2 py-1 rounded border border-border-weak-base bg-surface-raised-base text-11-regular text-text-weak">
-            <Show when={state().ok} fallback={<span>Company model API failed: {state().error}</span>}>
-              <span>
-                Company model API ok · {state().latency}ms · providers {state().providers} · connected {state().connected}
-                · models {state().models.length}
-              </span>
-            </Show>
-            <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
-            <pre class="mt-2 whitespace-pre-wrap break-all">
-              {JSON.stringify({ debug_tempo: state().debug_tempo }, null, 2)}
-            </pre>
-          </div>
-        )}
-      </Show>
       <List
         class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
         search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}

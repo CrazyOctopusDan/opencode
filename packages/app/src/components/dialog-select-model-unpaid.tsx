@@ -96,22 +96,6 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
         <Show when={providerData.loading}>
           <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
         </Show>
-        <Show when={providerData()}>
-          {(state) => (
-            <div class="mx-2 px-2 py-1 rounded border border-border-weak-base bg-surface-raised-base text-11-regular text-text-weak">
-              <Show when={state().ok} fallback={<span>Company model API failed: {state().error}</span>}>
-                <span>
-                  Company model API ok · {state().latency}ms · providers {state().providers} · connected{" "}
-                  {state().connected} · models {state().models.length}
-                </span>
-              </Show>
-              <pre class="mt-1 whitespace-pre-wrap break-all">{JSON.stringify({ providerIDs: state().providerIDs })}</pre>
-              <pre class="mt-2 whitespace-pre-wrap break-all">
-                {JSON.stringify({ debug_tempo: state().debug_tempo }, null, 2)}
-              </pre>
-            </div>
-          )}
-        </Show>
         <List
           class="[&_[data-slot=list-scroll]]:overflow-visible"
           ref={(ref) => (listRef = ref)}

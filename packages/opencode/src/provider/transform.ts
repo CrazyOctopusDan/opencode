@@ -19,6 +19,39 @@ function mimeToModality(mime: string): Modality | undefined {
 
 export namespace ProviderTransform {
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
+  const TRAVEL = "travelSky"
+
+  function part(p: any) {
+    if (typeof p?.text === "string") return p.text
+    if (p?.type === "tool-call" && typeof p?.toolName === "string") return `[tool-call:${p.toolName}]`
+    if (p?.type === "tool-result") {
+      if (typeof p?.output === "string") return p.output
+      if (typeof p?.output?.value === "string") return p.output.value
+      return "[tool-result]"
+    }
+    if (p?.type === "file" || p?.type === "image") return "[attachment]"
+    return ""
+  }
+
+  function text(v: unknown) {
+    if (typeof v === "string") return v
+    if (!Array.isArray(v)) return ""
+    return v.map((p) => part(p)).filter((v) => v.trim() !== "").join("\n")
+  }
+
+  function travel(msgs: ModelMessage[]) {
+    return msgs
+      .map((msg) => {
+        const role = msg.role === "tool" ? "assistant" : msg.role
+        const content = text(msg.content)
+        if (!content.trim()) return
+        return {
+          role,
+          content,
+        } as ModelMessage
+      })
+      .filter((msg): msg is ModelMessage => !!msg)
+  }
 
   // Maps npm package to the key the AI SDK expects for providerOptions
   function sdkKey(npm: string): string | undefined {
@@ -250,6 +283,7 @@ export namespace ProviderTransform {
   }
 
   export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
+    if (model.providerID === TRAVEL) return travel(msgs)
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model, options)
     if (
@@ -716,6 +750,7 @@ export namespace ProviderTransform {
     sessionID: string
     providerOptions?: Record<string, any>
   }): Record<string, any> {
+    if (input.model.providerID === TRAVEL) return {}
     const result: Record<string, any> = {}
 
     // openai and providers using openai package should set store to false by default.
