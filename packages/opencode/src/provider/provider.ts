@@ -50,6 +50,147 @@ import { ModelID, ProviderID } from "./schema"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
+  const travel = "travelSky"
+  const openaiCompatible = "@ai-sdk/openai-compatible"
+  const copilot = "@ai-sdk/github-copilot"
+
+  type TravelTrace = {
+    at: string
+    providerID: string
+    modelID: string
+    url?: string
+    rewritten: boolean
+    reason?: string
+    payload?: {
+      model?: string
+      messages: {
+        role: string
+        content: string
+      }[]
+    }
+  }
+  let lastTravel: TravelTrace | undefined
+
+  function trim(value: string, max = 240) {
+    if (value.length <= max) return value
+    return `${value.slice(0, max)}...`
+  }
+
+  function parseJSON(value: string) {
+    try {
+      const parsed = JSON.parse(value)
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>
+      return
+    } catch {
+      return
+    }
+  }
+
+  function parseBody(value: unknown) {
+    if (!value) return
+    if (typeof value === "string") {
+      const text = value.trim()
+      if (!text) return
+      return parseJSON(text)
+    }
+    if (typeof value === "object") return value as Record<string, unknown>
+    return
+  }
+
+  function toTextPart(value: unknown): string {
+    if (typeof value === "string") return value
+    if (!value || typeof value !== "object") return ""
+    const row = value as Record<string, unknown>
+    if (typeof row.text === "string") return row.text
+    if (typeof row.content === "string") return row.content
+    if (
+      row.type === "image" ||
+      row.type === "image_url" ||
+      row.type === "file" ||
+      row.type === "input_image" ||
+      row.type === "input_file"
+    )
+      return "[attachment]"
+    if (row.type === "tool-call") {
+      const name = typeof row.toolName === "string" ? row.toolName : "tool"
+      return `[tool-call:${name}]`
+    }
+    if (row.type === "tool-result") return "[tool-result]"
+    return ""
+  }
+
+  function toText(value: unknown) {
+    if (typeof value === "string") return value
+    if (Array.isArray(value)) return value.map((item) => toTextPart(item)).filter((item) => item.trim() !== "").join("\n")
+    return toTextPart(value)
+  }
+
+  export function normalizeTravelBody(value: unknown) {
+    const body = parseBody(value)
+    if (!body) return
+    const model = typeof body.model === "string" ? body.model : undefined
+    const list = Array.isArray(body.messages) ? body.messages : []
+    const messages = list.flatMap((item) => {
+      if (!item || typeof item !== "object") return []
+      const row = item as Record<string, unknown>
+      const role = typeof row.role === "string" ? row.role : "user"
+      const content = toText(row.content)
+      if (!content.trim()) return []
+      return [
+        {
+          role: role === "tool" ? "assistant" : role,
+          content,
+        },
+      ]
+    })
+    const out: {
+      model?: string
+      messages: {
+        role: string
+        content: string
+      }[]
+    } = { messages }
+    if (model) out.model = model
+    return out
+  }
+
+  function summarizeTravelBody(value: ReturnType<typeof normalizeTravelBody> | undefined) {
+    if (!value) return
+    return {
+      ...(value.model ? { model: value.model } : {}),
+      messages: value.messages.map((item) => ({
+        role: item.role,
+        content: trim(item.content),
+      })),
+    }
+  }
+
+  function resolveURL(input: unknown) {
+    if (typeof input === "string") return input
+    if (input instanceof URL) return input.toString()
+    if (input instanceof Request) return input.url
+    if (!input || typeof input !== "object") return
+    if ("url" in input && typeof input.url === "string") return input.url
+    return
+  }
+
+  function isChatPath(url: string) {
+    try {
+      return new URL(url).pathname.endsWith("/chat/completions")
+    } catch {
+      return url.split("?")[0].endsWith("/chat/completions")
+    }
+  }
+
+  export function resolveNpm(providerID: string, npm: string) {
+    if (providerID !== travel) return npm
+    if (npm === copilot) return openaiCompatible
+    return npm
+  }
+
+  export function travelTrace() {
+    return lastTravel
+  }
 
   function shouldUseCopilotResponsesApi(modelID: string): boolean {
     const match = /^gpt-(\d+)/.exec(modelID)
@@ -1169,6 +1310,7 @@ export namespace Provider {
             provider.key = modelPolicy.apiKey
           }
         }
+        if (providerID === travel) model.api.npm = openaiCompatible
         if (
           modelID === "gpt-5-chat-latest" ||
           (providerID === ProviderID.openrouter && modelID === "openai/gpt-5-chat")
@@ -1224,12 +1366,14 @@ export namespace Provider {
       const s = await state()
       const provider = s.providers[model.providerID]
       const options = { ...provider.options }
+      const npm = resolveNpm(model.providerID, model.api.npm)
+      const isTravel = model.providerID === travel
 
-      if (model.providerID === "google-vertex" && !model.api.npm.includes("@ai-sdk/openai-compatible")) {
+      if (model.providerID === "google-vertex" && !npm.includes(openaiCompatible)) {
         delete options.fetch
       }
 
-      if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
+      if (npm.includes(openaiCompatible) && options["includeUsage"] !== false) {
         options["includeUsage"] = true
       }
 
@@ -1265,7 +1409,7 @@ export namespace Provider {
           ...model.headers,
         }
 
-      const key = Hash.fast(JSON.stringify({ providerID: model.providerID, npm: model.api.npm, options }))
+      const key = Hash.fast(JSON.stringify({ providerID: model.providerID, npm, options }))
       const existing = s.sdk.get(key)
       if (existing) return existing
 
@@ -1288,11 +1432,39 @@ export namespace Provider {
         const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
         if (combined) opts.signal = combined
 
+        const url = resolveURL(input)
+        if (isTravel && url && isChatPath(url) && opts.method === "POST") {
+          const body = normalizeTravelBody(opts.body)
+          if (body) {
+            opts.body = JSON.stringify(body)
+            const headers = new Headers(opts.headers)
+            if (!headers.has("content-type")) headers.set("content-type", "application/json")
+            opts.headers = headers
+            lastTravel = {
+              at: new Date().toISOString(),
+              providerID: model.providerID,
+              modelID: model.id,
+              url,
+              rewritten: true,
+              payload: summarizeTravelBody(body),
+            }
+          } else {
+            lastTravel = {
+              at: new Date().toISOString(),
+              providerID: model.providerID,
+              modelID: model.id,
+              url,
+              rewritten: false,
+              reason: "invalid_body",
+            }
+          }
+        }
+
         // Strip openai itemId metadata following what codex does
         // Codex uses #[serde(skip_serializing)] on id fields for all item types:
         // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
         // IDs are only re-attached for Azure with store=true
-        if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
+        if (npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
           const body = JSON.parse(opts.body as string)
           const isAzure = model.providerID.includes("azure")
           const keepIds = isAzure && body.store === true
@@ -1316,9 +1488,9 @@ export namespace Provider {
         return wrapSSE(res, chunkTimeout, chunkAbortCtl)
       }
 
-      const bundledFn = BUNDLED_PROVIDERS[model.api.npm]
+      const bundledFn = BUNDLED_PROVIDERS[npm]
       if (bundledFn) {
-        log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
+        log.info("using bundled provider", { providerID: model.providerID, pkg: npm })
         const loaded = bundledFn({
           name: model.providerID,
           ...options,
@@ -1328,11 +1500,11 @@ export namespace Provider {
       }
 
       let installedPath: string
-      if (!model.api.npm.startsWith("file://")) {
-        installedPath = await BunProc.install(model.api.npm, "latest")
+      if (!npm.startsWith("file://")) {
+        installedPath = await BunProc.install(npm, "latest")
       } else {
-        log.info("loading local provider", { pkg: model.api.npm })
-        installedPath = model.api.npm
+        log.info("loading local provider", { pkg: npm })
+        installedPath = npm
       }
 
       const mod = await import(installedPath)
