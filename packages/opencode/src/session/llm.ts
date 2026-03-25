@@ -145,17 +145,10 @@ export namespace LLM {
       },
     )
 
-    const travel = input.model.providerID === "travelSky"
-    let maxOutputTokens =
+    const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot") ? undefined : ProviderTransform.maxOutputTokens(input.model)
-    if (travel) maxOutputTokens = undefined
 
     const tools = await resolveTools(input)
-    if (travel) {
-      for (const id of Object.keys(tools)) {
-        delete tools[id]
-      }
-    }
 
     // LiteLLM and some Anthropic proxies require the tools parameter to be present
     // when message history contains tool calls, even if no tools are being used.
@@ -168,7 +161,7 @@ export namespace LLM {
       input.model.providerID.toLowerCase().includes("litellm") ||
       input.model.api.id.toLowerCase().includes("litellm")
 
-    if (!travel && isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
+    if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
       tools["_noop"] = tool({
         description:
           "Placeholder for LiteLLM/Anthropic proxy compatibility - required when message history contains tool calls but no active tools are needed",
@@ -204,13 +197,13 @@ export namespace LLM {
           toolName: "invalid",
         }
       },
-      temperature: travel ? undefined : params.temperature,
-      topP: travel ? undefined : params.topP,
-      topK: travel ? undefined : params.topK,
-      providerOptions: travel ? undefined : ProviderTransform.providerOptions(input.model, params.options),
+      temperature: params.temperature,
+      topP: params.topP,
+      topK: params.topK,
+      providerOptions: ProviderTransform.providerOptions(input.model, params.options),
       activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
       tools,
-      toolChoice: travel ? undefined : input.toolChoice,
+      toolChoice: input.toolChoice,
       maxOutputTokens,
       abortSignal: input.abort,
       headers: {
