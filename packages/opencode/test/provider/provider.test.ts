@@ -10,7 +10,6 @@ import { Env } from "../../src/env"
 test("travelSky request body normalized to minimal payload", () => {
   const out = Provider.normalizeTravelBody({
     model: "Qwen3-Coder-30B",
-    stream: true,
     temperature: 0.7,
     top_p: 0.95,
     messages: [
@@ -28,6 +27,18 @@ test("travelSky request body normalized to minimal payload", () => {
       { role: "user", content: "hello\n[attachment]" },
       { role: "assistant", content: "tool ok" },
     ],
+  })
+})
+
+test("travelSky request body always enables stream", () => {
+  const out = Provider.normalizeTravelBody({
+    model: "Qwen3-Coder-30B",
+    messages: [{ role: "user", content: "hi" }],
+  })
+  expect(out).toEqual({
+    model: "Qwen3-Coder-30B",
+    stream: true,
+    messages: [{ role: "user", content: "hi" }],
   })
 })
 

@@ -130,7 +130,6 @@ export namespace Provider {
     const body = parseBody(value)
     if (!body) return
     const model = typeof body.model === "string" ? body.model : undefined
-    const stream = typeof body.stream === "boolean" ? body.stream : undefined
     const list = Array.isArray(body.messages) ? body.messages : []
     const messages = list.flatMap((item) => {
       if (!item || typeof item !== "object") return []
@@ -147,14 +146,13 @@ export namespace Provider {
     })
     const out: {
       model?: string
-      stream?: boolean
+      stream: boolean
       messages: {
         role: string
         content: string
       }[]
-    } = { messages }
+    } = { stream: true, messages }
     if (model) out.model = model
-    if (typeof stream === "boolean") out.stream = stream
     return out
   }
 
