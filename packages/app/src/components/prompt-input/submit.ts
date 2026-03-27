@@ -85,7 +85,8 @@ const settle = (input: {
       )
       .then(() => {
         const state = input.sync.data.session_status[input.sessionID] ?? { type: "idle" as const }
-        if (state.type === "idle") return
+        const next = state.type !== "idle"
+        if (!next) return
         if (Date.now() >= end) return
         setTimeout(pull, delay)
       })
