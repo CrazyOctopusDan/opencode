@@ -27,6 +27,7 @@ import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { SessionDiagnostic } from "@/context/session-diagnostic"
 import { messageAgentColor } from "@/utils/agent"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
 
@@ -41,6 +42,7 @@ type MessageComment = {
 
 const emptyMessages: MessageType[] = []
 const idle = { type: "idle" as const }
+const fmt = (at?: number) => (typeof at === "number" ? new Date(at).toLocaleTimeString() : "n/a")
 
 type UserActions = {
   fork?: (input: { sessionID: string; messageID: string }) => Promise<void> | void
@@ -316,6 +318,45 @@ export function MessageTimeline(props: {
     turnStart: () => props.turnStart,
     messages: () => props.renderedUserMessages,
     config: stageCfg,
+  })
+  const dbg = createMemo(() => import.meta.env.PROD)
+  const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
+  const miss = createMemo(() =>
+    Object.values(SessionDiagnostic.data).reduce((sum, item) => sum + (item?.health.miss ?? 0), 0),
+  )
+  const item = createMemo(() => {
+    const id = sessionID()
+    if (!id) return
+    return row()?.session[id]
+  })
+  const msgCount = createMemo(() => sessionMessages().length)
+  const partCount = createMemo(() =>
+    sessionMessages().reduce((sum, msg) => sum + (sync.data.part[msg.id]?.length ?? 0), 0),
+  )
+  const pendingCount = createMemo(
+    () =>
+      sessionMessages().filter(
+        (item): item is AssistantMessage => item.role === "assistant" && typeof item.time.completed !== "number",
+      ).length,
+  )
+  const orphanCount = createMemo(() => {
+    const id = sessionID()
+    if (!id) return 0
+    const ids = new Set(sessionMessages().map((item) => item.id))
+    return Object.values(sync.data.part).reduce((sum, parts) => {
+      const part = parts?.[0]
+      if (!part || part.sessionID !== id) return sum
+      if (ids.has(part.messageID)) return sum
+      return sum + 1
+    }, 0)
+  })
+  const parentOk = createMemo(() => {
+    const last = sessionMessages().findLast(
+      (item): item is AssistantMessage => item.role === "assistant" && !!item.parentID,
+    )
+    if (!last?.parentID) return "n/a"
+    const found = sessionMessages().some((item) => item.role === "user" && item.id === last.parentID)
+    return found ? "yes" : "no"
   })
 
   const [title, setTitle] = createStore({
@@ -926,6 +967,33 @@ export function MessageTimeline(props: {
                 "mt-0": !props.centered,
               }}
             >
+              <Show when={dbg() && !!sessionID()}>
+                <div class="w-full px-4 md:px-5">
+                  <div class="rounded-[8px] border border-border-weak-base bg-background-base px-3 py-2 text-[11px] leading-5 font-mono text-text-weak">
+                    <div class="text-text-strong">diag</div>
+                    <div>
+                      event: total={row()?.event.total ?? 0} upd={row()?.event.by["message.updated"] ?? 0} part=
+                      {row()?.event.by["message.part.updated"] ?? 0} delta={row()?.event.by["message.part.delta"] ?? 0}{" "}
+                      coalesce={row()?.event.coalesce ?? 0} last={row()?.event.last?.type ?? "n/a"}@
+                      {fmt(row()?.event.last?.at)} mid={row()?.event.last?.messageID ?? "n/a"} pid=
+                      {row()?.event.last?.partID ?? "n/a"}
+                    </div>
+                    <div>
+                      store: msg={msgCount()} part={partCount()} pending_assistant={pendingCount()} orphan_part=
+                      {orphanCount()}
+                    </div>
+                    <div>
+                      render: turns={rendered().length} active_user={activeMessageID() ?? "n/a"} parent_match={parentOk()}
+                    </div>
+                    <div>
+                      health: directory_match_miss={miss()} overwrite_risk=
+                      {item()?.sync.overwrite ? "true" : "false"} sync_mode={item()?.sync.mode ?? "n/a"} before=
+                      {item()?.sync.before ?? 0} after={item()?.sync.after ?? 0} lost=
+                      {item()?.sync.lost.join(",") || "n/a"} sync_at={fmt(item()?.sync.at)}
+                    </div>
+                  </div>
+                </div>
+              </Show>
               <Show when={props.turnStart > 0 || props.historyMore}>
                 <div class="w-full flex justify-center">
                   <Button

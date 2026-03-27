@@ -13,6 +13,7 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import { SESSION_CACHE_LIMIT, dropSessionCaches, pickSessionCacheEvictions } from "./global-sync/session-cache"
+import { SessionDiagnostic } from "./session-diagnostic"
 
 function sortParts(parts: Part[]) {
   return parts.filter((part) => !!part?.id).sort((a, b) => cmp(a.id, b.id))
@@ -36,6 +37,12 @@ function merge<T extends { id: string }>(a: readonly T[], b: readonly T[]) {
   const map = new Map(a.map((item) => [item.id, item] as const))
   for (const item of b) map.set(item.id, item)
   return [...map.values()].sort((x, y) => cmp(x.id, y.id))
+}
+
+export function detectOverwrite(input: { before: Message[]; after: Message[] }) {
+  if (input.before.length === 0) return []
+  const keep = new Set(input.after.map((item) => item.id))
+  return input.before.filter((item) => !keep.has(item.id)).map((item) => item.id)
 }
 
 type OptimisticStore = {
@@ -331,8 +338,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             clearOptimistic(input.directory, input.sessionID, messageID)
           }
           const [store] = globalSync.child(input.directory, { bootstrap: false })
+          const before = store.message[input.sessionID] ?? []
           const cached = input.mode === "prepend" ? (store.message[input.sessionID] ?? []) : []
           const message = input.mode === "prepend" ? merge(cached, next.session) : next.session
+          const lost = detectOverwrite({ before, after: message })
           batch(() => {
             input.setStore("message", input.sessionID, reconcile(message, { key: "id" }))
             for (const p of next.part) {
@@ -347,6 +356,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               limit: message.length,
               cursor: next.cursor,
               complete: next.complete,
+            })
+            SessionDiagnostic.sync({
+              dir: input.directory,
+              sessionID: input.sessionID,
+              mode: input.mode ?? "replace",
+              before: before.length,
+              after: message.length,
+              lost,
             })
           })
         })

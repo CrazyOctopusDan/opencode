@@ -8,6 +8,7 @@ import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { useAuth } from "./auth"
+import { SessionDiagnostic } from "./session-diagnostic"
 
 const abortError = z.object({
   name: z.literal("AbortError"),
@@ -158,6 +159,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               const i = coalesced.get(k)
               if (i !== undefined) {
                 queue[i] = { directory, payload }
+                SessionDiagnostic.coalesce(directory)
                 if (payload.type === "message.part.updated") {
                   const part = payload.properties.part
                   staleDeltas.add(deltaKey(directory, part.messageID, part.id))
@@ -167,6 +169,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               coalesced.set(k, queue.length)
             }
             queue.push({ directory, payload })
+            SessionDiagnostic.event({ dir: directory, evt: payload })
             schedule()
 
             if (Date.now() - yielded < STREAM_YIELD_MS) continue

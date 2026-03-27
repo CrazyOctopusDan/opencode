@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
-import { applyOptimisticAdd, applyOptimisticRemove, mergeOptimisticPage } from "./sync"
+import { applyOptimisticAdd, applyOptimisticRemove, detectOverwrite, mergeOptimisticPage } from "./sync"
 
 type Text = Extract<Part, { type: "text" }>
 
@@ -119,5 +119,14 @@ describe("sync optimistic reducers", () => {
       { id: "prt_1", type: "text", text: "server" },
       { id: "prt_2", type: "text", text: "prt_2" },
     ])
+  })
+
+  test("detectOverwrite returns dropped ids", () => {
+    const sessionID = "ses_1"
+    const lost = detectOverwrite({
+      before: [userMessage("msg_1", sessionID), userMessage("msg_2", sessionID)],
+      after: [userMessage("msg_2", sessionID)],
+    })
+    expect(lost).toEqual(["msg_1"])
   })
 })

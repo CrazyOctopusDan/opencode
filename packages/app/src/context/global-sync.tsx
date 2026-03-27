@@ -36,6 +36,7 @@ import type { ProjectMeta } from "./global-sync/types"
 import { SESSION_RECENT_LIMIT } from "./global-sync/types"
 import { sanitizeProject } from "./global-sync/utils"
 import { formatServerError } from "@/utils/server-errors"
+import { SessionDiagnostic } from "./session-diagnostic"
 
 type GlobalStore = {
   ready: boolean
@@ -312,7 +313,10 @@ function createGlobalSync() {
     }
 
     const key = match(directory)
-    if (!key) return
+    if (!key) {
+      SessionDiagnostic.miss(directory)
+      return
+    }
     const existing = children.children[key]
     if (!existing) return
     children.mark(key)
