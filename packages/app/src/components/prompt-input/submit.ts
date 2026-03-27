@@ -50,6 +50,49 @@ const draftText = (prompt: Prompt) => prompt.map((part) => ("content" in part ? 
 
 const draftImages = (prompt: Prompt) => prompt.filter((part): part is ImageAttachmentPart => part.type === "image")
 
+const settle = (input: {
+  client: ReturnType<typeof useSDK>["client"]
+  globalSync: ReturnType<typeof useGlobalSync>
+  sync: ReturnType<typeof useSync>
+  sessionID: string
+  directory: string
+}) => {
+  const [, setStore] = input.globalSync.child(input.directory, { bootstrap: false })
+  const end = Date.now() + 90_000
+  const delay = 4_000
+
+  const hasPending = () =>
+    (input.sync.data.message[input.sessionID] ?? []).some(
+      (item) => item.role === "assistant" && typeof item.time.completed !== "number",
+    )
+
+  const pull = () =>
+    input.client.session
+      .status()
+      .then((x) => {
+        const next = x.data?.[input.sessionID]
+        if (next) setStore("session_status", input.sessionID, next)
+      })
+      .catch(() => {})
+      .then(() =>
+        input.sync.session
+          .sync(input.sessionID, { force: true })
+          .then(() => {
+            if (hasPending()) return
+            setStore("session_status", input.sessionID, { type: "idle" })
+          })
+          .catch(() => {}),
+      )
+      .then(() => {
+        const state = input.sync.data.session_status[input.sessionID] ?? { type: "idle" as const }
+        if (state.type === "idle") return
+        if (Date.now() >= end) return
+        setTimeout(pull, delay)
+      })
+
+  setTimeout(pull, delay)
+}
+
 export async function sendFollowupDraft(input: FollowupSendInput) {
   const text = draftText(input.draft.prompt)
   const images = draftImages(input.draft.prompt)
@@ -557,19 +600,31 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       messageID,
       optimisticBusy: sessionDirectory === projectDirectory,
       before: waitForWorktree,
-    }).catch((err) => {
-      pending.delete(session.id)
-      if (sessionDirectory === projectDirectory) {
-        sync.set("session_status", session.id, { type: "idle" })
-      }
-      showToast({
-        title: language.t("prompt.toast.promptSendFailed.title"),
-        description: errorMessage(err),
-      })
-      removeOptimisticMessage()
-      restoreCommentItems(commentItems)
-      restoreInput()
     })
+      .then((ok) => {
+        if (!ok) return
+        if (sessionDirectory !== projectDirectory) return
+        settle({
+          client,
+          globalSync,
+          sync,
+          sessionID: session.id,
+          directory: sessionDirectory,
+        })
+      })
+      .catch((err) => {
+        pending.delete(session.id)
+        if (sessionDirectory === projectDirectory) {
+          sync.set("session_status", session.id, { type: "idle" })
+        }
+        showToast({
+          title: language.t("prompt.toast.promptSendFailed.title"),
+          description: errorMessage(err),
+        })
+        removeOptimisticMessage()
+        restoreCommentItems(commentItems)
+        restoreInput()
+      })
   }
 
   return {
