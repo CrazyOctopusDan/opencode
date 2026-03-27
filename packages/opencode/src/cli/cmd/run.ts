@@ -443,6 +443,8 @@ export const RunCommand = cmd({
 
       async function loop() {
         const toggles = new Map<string, boolean>()
+        const kinds = new Map<string, "text" | "reasoning">()
+        const live = new Set<string>()
 
         for await (const event of events.stream) {
           if (
@@ -460,6 +462,7 @@ export const RunCommand = cmd({
           if (event.type === "message.part.updated") {
             const part = event.properties.part
             if (part.sessionID !== sessionID) continue
+            if (part.type === "text" || part.type === "reasoning") kinds.set(part.id, part.type)
 
             if (part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")) {
               if (emit("tool_use", { part })) continue
@@ -494,6 +497,11 @@ export const RunCommand = cmd({
             }
 
             if (part.type === "text" && part.time?.end) {
+              if (live.has(part.id)) {
+                live.delete(part.id)
+                process.stdout.write(EOL)
+                continue
+              }
               if (emit("text", { part })) continue
               const text = part.text.trim()
               if (!text) continue
@@ -519,6 +527,17 @@ export const RunCommand = cmd({
               }
               process.stdout.write(line + EOL)
             }
+          }
+
+          if (event.type === "message.part.delta") {
+            const part = event.properties
+            if (part.sessionID !== sessionID) continue
+            if (part.field !== "text") continue
+            if (kinds.get(part.partID) !== "text") continue
+            if (!part.delta) continue
+            if (emit("text_delta", part)) continue
+            process.stdout.write(part.delta)
+            live.add(part.partID)
           }
 
           if (event.type === "session.error") {

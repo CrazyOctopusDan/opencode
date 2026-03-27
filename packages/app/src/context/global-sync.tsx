@@ -275,6 +275,23 @@ function createGlobalSync() {
     return promise
   }
 
+  const norm = (input: string) => {
+    let value = input.replace(/\\/g, "/").replace(/\/+$/, "")
+    if (/^[A-Za-z]:\//.test(value)) value = `/${value}`
+    return value.toLowerCase()
+  }
+
+  const match = (input: string) => {
+    if (children.children[input]) return input
+    const target = norm(input)
+    for (const key of Object.keys(children.children)) {
+      if (norm(key) !== target) continue
+      return key
+    }
+    const keys = Object.keys(children.children)
+    if (keys.length === 1) return keys[0]
+  }
+
   const unsub = globalSDK.event.listen((e) => {
     const directory = e.name
     const event = e.details
@@ -294,20 +311,22 @@ function createGlobalSync() {
       return
     }
 
-    const existing = children.children[directory]
+    const key = match(directory)
+    if (!key) return
+    const existing = children.children[key]
     if (!existing) return
-    children.mark(directory)
+    children.mark(key)
     const [store, setStore] = existing
     applyDirectoryEvent({
       event,
-      directory,
+      directory: key,
       store,
       setStore,
       push: queue.push,
       setSessionTodo,
-      vcsCache: children.vcsCache.get(directory),
+      vcsCache: children.vcsCache.get(key),
       loadLsp: () => {
-        sdkFor(directory)
+        sdkFor(key)
           .lsp.status()
           .then((x) => setStore("lsp", x.data ?? []))
       },
