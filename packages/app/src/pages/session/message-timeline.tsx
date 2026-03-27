@@ -238,15 +238,16 @@ export function MessageTimeline(props: {
     if (!id) return emptyMessages
     return sync.data.message[id] ?? emptyMessages
   })
-  const pending = createMemo(() =>
-    sessionMessages().findLast(
-      (item): item is AssistantMessage => item.role === "assistant" && typeof item.time.completed !== "number",
-    ),
-  )
   const sessionStatus = createMemo(() => {
     const id = sessionID()
     if (!id) return idle
     return sync.data.session_status[id] ?? idle
+  })
+  const pending = createMemo(() => {
+    if (sessionStatus().type === "idle") return undefined
+    return sessionMessages().findLast(
+      (item): item is AssistantMessage => item.role === "assistant" && typeof item.time.completed !== "number",
+    )
   })
   const working = createMemo(() => !!pending() || sessionStatus().type !== "idle")
   const tint = createMemo(() => messageAgentColor(sessionMessages(), sync.data.agent))
@@ -319,7 +320,7 @@ export function MessageTimeline(props: {
     messages: () => props.renderedUserMessages,
     config: stageCfg,
   })
-  const dbg = createMemo(() => import.meta.env.PROD)
+  const dbg = createMemo(() => import.meta.env.VITE_SESSION_DIAG === "true")
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
   const miss = createMemo(() =>
     Object.values(SessionDiagnostic.data).reduce((sum, item) => sum + (item?.health.miss ?? 0), 0),

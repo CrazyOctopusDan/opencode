@@ -23,26 +23,20 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const auth = useAuth()
     const abort = new AbortController()
 
-    const eventFetch = (() => {
-      if (!platform.fetch || !server.current) return
-      try {
-        const url = new URL(server.current.http.url)
-        const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
-        if (!loopback) return platform.fetch
-      } catch {
-        return
-      }
-    })()
-
     const currentServer = server.current
     if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
+    const canPlatform = (() => {
+      if (!platform.fetch) return false
+      try {
+        const url = new URL(currentServer.http.url)
+        const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
+        return !loopback
+      } catch {
+        return false
+      }
+    })()
+    let preferPlatform = canPlatform
 
-    const eventSdk = createSdkForServer({
-      signal: abort.signal,
-      fetch: eventFetch,
-      server: currentServer.http,
-      token: auth.token(),
-    })
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
@@ -127,8 +121,16 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     void (async () => {
       while (!abort.signal.aborted) {
+        const eventFetch = canPlatform && preferPlatform ? platform.fetch : undefined
+        const eventSdk = createSdkForServer({
+          signal: abort.signal,
+          fetch: eventFetch,
+          server: currentServer.http,
+          token: auth.token(),
+        })
         attempt = new AbortController()
         lastEventAt = Date.now()
+        let seen = false
         const onAbort = () => {
           attempt?.abort()
         }
@@ -150,6 +152,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           let yielded = Date.now()
           resetHeartbeat()
           for await (const event of events.stream) {
+            seen = true
             resetHeartbeat()
             streamErrorLogged = false
             const directory = event.directory ?? "global"
@@ -192,6 +195,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
 
         if (abort.signal.aborted) return
+        if (canPlatform && !seen) {
+          preferPlatform = !preferPlatform
+        }
         await wait(RECONNECT_DELAY_MS)
       }
     })().finally(flush)

@@ -58,8 +58,8 @@ const settle = (input: {
   directory: string
 }) => {
   const [, setStore] = input.globalSync.child(input.directory, { bootstrap: false })
-  const end = Date.now() + 90_000
-  const delay = 4_000
+  const end = Date.now() + 10 * 60_000
+  const delay = 2_000
 
   const hasPending = () =>
     (input.sync.data.message[input.sessionID] ?? []).some(
@@ -67,26 +67,22 @@ const settle = (input: {
     )
 
   const pull = () =>
-    input.client.session
-      .status()
-      .then((x) => {
-        const next = x.data?.[input.sessionID]
-        if (next) setStore("session_status", input.sessionID, next)
-      })
+    input.sync.session
+      .sync(input.sessionID, { force: true })
       .catch(() => {})
       .then(() =>
-        input.sync.session
-          .sync(input.sessionID, { force: true })
-          .then(() => {
-            if (hasPending()) return
-            setStore("session_status", input.sessionID, { type: "idle" })
+        input.client.session
+          .status()
+          .then((x) => {
+            const next = x.data?.[input.sessionID]
+            if (next) setStore("session_status", input.sessionID, next)
           })
           .catch(() => {}),
       )
       .then(() => {
-        const state = input.sync.data.session_status[input.sessionID] ?? { type: "idle" as const }
-        const next = state.type !== "idle"
-        if (!next) return
+        const busy = (input.sync.data.session_status[input.sessionID] ?? { type: "idle" as const }).type !== "idle"
+        const pending = hasPending()
+        if (!busy && !pending) return
         if (Date.now() >= end) return
         setTimeout(pull, delay)
       })
