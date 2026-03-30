@@ -184,6 +184,83 @@ export namespace Provider {
     }
   }
 
+  function isStreamBody(value: unknown) {
+    const body = parseBody(value)
+    if (!body) return false
+    return body.stream === true
+  }
+
+  async function travelJSONToSSE(res: Response) {
+    const type = res.headers.get("content-type") ?? ""
+    if (!type.includes("application/json")) return
+    const text = await res.text()
+    const body = parseJSON(text)
+    if (!body) return
+    const list = Array.isArray(body.choices) ? body.choices : []
+    const choice = list[0]
+    if (!choice || typeof choice !== "object") return
+    const row = choice as Record<string, unknown>
+    const message = row.message
+    if (!message || typeof message !== "object") return
+    const delta: Record<string, unknown> = { role: "assistant" }
+    const msg = message as Record<string, unknown>
+    if (typeof msg.content === "string" && msg.content) delta.content = msg.content
+    if (typeof msg.reasoning_text === "string" && msg.reasoning_text) delta.reasoning_text = msg.reasoning_text
+    if (typeof msg.reasoning_opaque === "string" && msg.reasoning_opaque) delta.reasoning_opaque = msg.reasoning_opaque
+    const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : []
+    if (calls.length > 0) {
+      delta.tool_calls = calls.map((item, i) => {
+        const call = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+        const fn = call.function && typeof call.function === "object" ? (call.function as Record<string, unknown>) : {}
+        return {
+          index: i,
+          id: typeof call.id === "string" ? call.id : undefined,
+          function: {
+            name: typeof fn.name === "string" ? fn.name : undefined,
+            arguments: typeof fn.arguments === "string" ? fn.arguments : undefined,
+          },
+        }
+      })
+    }
+    const finish = typeof row.finish_reason === "string" ? row.finish_reason : null
+    const data = {
+      id: typeof body.id === "string" ? body.id : undefined,
+      created: typeof body.created === "number" ? body.created : undefined,
+      model: typeof body.model === "string" ? body.model : undefined,
+      choices: [
+        {
+          index: 0,
+          delta,
+          finish_reason: null,
+        },
+      ],
+      usage: undefined,
+    }
+    const done = {
+      id: data.id,
+      created: data.created,
+      model: data.model,
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: finish,
+        },
+      ],
+      usage: body.usage,
+    }
+    const out = `data: ${JSON.stringify(data)}\n\ndata: ${JSON.stringify(done)}\n\ndata: [DONE]\n\n`
+    return new Response(out, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      },
+    })
+  }
+
   export function resolveNpm(providerID: string, npm: string) {
     if (providerID !== travel) return npm
     if (npm === copilot) return openaiCompatible
@@ -1435,6 +1512,7 @@ export namespace Provider {
         if (combined) opts.signal = combined
 
         const url = resolveURL(input)
+        const travelStream = isTravel && url && isChatPath(url) && opts.method === "POST" && isStreamBody(opts.body)
         if (isTravel && url && isChatPath(url) && opts.method === "POST") {
           const body = normalizeTravelBody(opts.body)
           if (body) {
@@ -1486,8 +1564,10 @@ export namespace Provider {
           timeout: false,
         })
 
-        if (!chunkAbortCtl) return res
-        return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+        const sse = travelStream ? await travelJSONToSSE(res) : undefined
+        const next = sse ?? res
+        if (!chunkAbortCtl) return next
+        return wrapSSE(next, chunkTimeout, chunkAbortCtl)
       }
 
       const bundledFn = BUNDLED_PROVIDERS[npm]
