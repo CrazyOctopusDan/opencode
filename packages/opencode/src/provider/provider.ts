@@ -190,6 +190,34 @@ export namespace Provider {
     return body.stream === true
   }
 
+  // 航信模型特别修改
+  function pullTag(input: string, tag: string) {
+    const r = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i")
+    const m = input.match(r)
+    if (!m) return
+    return m[1].trim()
+  }
+
+  // 航信模型特别修改
+  function parseFileEditor(input: string) {
+    const m = input.match(/<file_editor>([\s\S]*?)<\/file_editor>/i)
+    if (!m) return
+    const body = m[1]
+    const filePath = pullTag(body, "file_path")
+    const oldString = pullTag(body, "old_content")
+    const newString = pullTag(body, "new_content")
+    if (!filePath || oldString === undefined || newString === undefined) return
+    const args = {
+      filePath,
+      oldString,
+      newString,
+    }
+    return {
+      text: input.replace(m[0], "").trim(),
+      args,
+    }
+  }
+
   async function travelJSONToSSE(res: Response) {
     const type = res.headers.get("content-type") ?? ""
     if (!type.includes("application/json")) return
@@ -204,7 +232,10 @@ export namespace Provider {
     if (!message || typeof message !== "object") return
     const delta: Record<string, unknown> = { role: "assistant" }
     const msg = message as Record<string, unknown>
-    if (typeof msg.content === "string" && msg.content) delta.content = msg.content
+    const content = typeof msg.content === "string" ? msg.content : ""
+    const editor = content ? parseFileEditor(content) : undefined
+    const plain = editor ? editor.text : content
+    if (plain) delta.content = plain
     if (typeof msg.reasoning_text === "string" && msg.reasoning_text) delta.reasoning_text = msg.reasoning_text
     if (typeof msg.reasoning_opaque === "string" && msg.reasoning_opaque) delta.reasoning_opaque = msg.reasoning_opaque
     const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : []
@@ -221,8 +252,24 @@ export namespace Provider {
           },
         }
       })
+    } else if (editor && editor.args.oldString !== editor.args.newString) {
+      delta.tool_calls = [
+        {
+          index: 0,
+          id: "travel_file_editor_0",
+          function: {
+            name: "edit",
+            arguments: JSON.stringify(editor.args),
+          },
+        },
+      ]
     }
-    const finish = typeof row.finish_reason === "string" ? row.finish_reason : null
+    const finish =
+      delta.tool_calls && Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0
+        ? "tool_calls"
+        : typeof row.finish_reason === "string"
+          ? row.finish_reason
+          : null
     const data = {
       id: typeof body.id === "string" ? body.id : undefined,
       created: typeof body.created === "number" ? body.created : undefined,
