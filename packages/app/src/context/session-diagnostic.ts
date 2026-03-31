@@ -31,6 +31,16 @@ type Dir = {
   }
   health: {
     miss: number
+    log: Array<{
+      at: number
+      kind: string
+      reason?: string
+      sessionID?: string
+      messageID?: string
+      partID?: string
+      field?: string
+      deltaLen?: number
+    }>
   }
   session: Record<string, Row>
 }
@@ -54,11 +64,32 @@ const baseDir = (): Dir => ({
   },
   health: {
     miss: 0,
+    log: [],
   },
   session: {},
 })
 
 const [data, setData] = createStore<Record<string, Dir>>({})
+const debugKey = "opencode:stream-debug"
+
+const debugOn = () => {
+  if (typeof localStorage === "undefined") return false
+  return localStorage.getItem(debugKey) === "1"
+}
+
+const debugOut = (type: string, props: Record<string, unknown>) => {
+  if (!debugOn()) return
+  console.info("[stream-debug]", type, props)
+}
+
+const setDebug = (on: boolean) => {
+  if (typeof localStorage === "undefined") return
+  if (on) {
+    localStorage.setItem(debugKey, "1")
+    return
+  }
+  localStorage.removeItem(debugKey)
+}
 
 const ensureDir = (dir: string) => {
   if (data[dir]) return
@@ -116,6 +147,41 @@ const pick = (evt: Event): Omit<Last, "at" | "type"> => {
 
 export const SessionDiagnostic = {
   data,
+  debugOn,
+  setDebug,
+  debugOut,
+  trace(input: {
+    dir: string
+    kind: string
+    reason?: string
+    sessionID?: string
+    messageID?: string
+    partID?: string
+    field?: string
+    deltaLen?: number
+  }) {
+    ensureDir(input.dir)
+    const row = {
+      at: Date.now(),
+      kind: input.kind,
+      reason: input.reason,
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      partID: input.partID,
+      field: input.field,
+      deltaLen: input.deltaLen,
+    }
+    setData(
+      input.dir,
+      "health",
+      "log",
+      produce((draft) => {
+        draft.push(row)
+        if (draft.length > 30) draft.splice(0, draft.length - 30)
+      }),
+    )
+    debugOut(input.kind, row)
+  },
   event(input: { dir: string; evt: Event }) {
     ensureDir(input.dir)
     const id = pick(input.evt)
@@ -140,6 +206,22 @@ export const SessionDiagnostic = {
   miss(dir: string) {
     ensureDir(dir)
     setData(dir, "health", "miss", (value) => value + 1)
+  },
+  drop(input: {
+    dir: string
+    reason: "stale_delta" | "missing_parts" | "missing_part"
+    sessionID?: string
+    messageID: string
+    partID: string
+    field?: string
+    deltaLen?: number
+  }) {
+    ensureDir(input.dir)
+    setData(input.dir, "health", "miss", (value) => value + 1)
+    SessionDiagnostic.trace({
+      ...input,
+      kind: "drop",
+    })
   },
   sync(input: {
     dir: string

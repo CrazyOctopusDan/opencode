@@ -218,6 +218,81 @@ export namespace Provider {
     }
   }
 
+  // 航信模型特别修改
+  function mapToolName(name: string) {
+    const key = name.trim().toLowerCase()
+    if (["file_write", "write_file", "filewrite"].includes(key)) return "write"
+    if (["file_edit", "edit_file", "fileeditor", "file_editor"].includes(key)) return "edit"
+    if (["apply_patch", "patch_apply", "file_patch"].includes(key)) return "apply_patch"
+    return
+  }
+
+  // 航信模型特别修改
+  function parseToolCode(input: string) {
+    const m = input.match(/<tool_code>([\s\S]*?)<\/tool_code>/i)
+    if (!m) return
+    const body = m[1]
+    const rawName = pullTag(body, "tool_name")
+    const rawInput = pullTag(body, "tool_input")
+    if (!rawName || !rawInput) return
+    const toolName = mapToolName(rawName)
+    if (!toolName) return
+    const parsed = parseJSON(rawInput)
+    if (!parsed) return
+
+    if (toolName === "write") {
+      const filePath = typeof parsed.filePath === "string" ? parsed.filePath : undefined
+      const content = typeof parsed.content === "string" ? parsed.content : undefined
+      if (!filePath || content === undefined) return
+      return {
+        text: input.replace(m[0], "").trim(),
+        call: {
+          toolName,
+          args: {
+            filePath,
+            content,
+          },
+        },
+      }
+    }
+
+    if (toolName === "edit") {
+      const filePath = typeof parsed.filePath === "string" ? parsed.filePath : undefined
+      const oldString = typeof parsed.oldString === "string" ? parsed.oldString : undefined
+      const newString = typeof parsed.newString === "string" ? parsed.newString : undefined
+      const replaceAll = typeof parsed.replaceAll === "boolean" ? parsed.replaceAll : undefined
+      if (!filePath || oldString === undefined || newString === undefined) return
+      return {
+        text: input.replace(m[0], "").trim(),
+        call: {
+          toolName,
+          args: {
+            filePath,
+            oldString,
+            newString,
+            ...(replaceAll !== undefined ? { replaceAll } : {}),
+          },
+        },
+      }
+    }
+
+    if (toolName === "apply_patch") {
+      const patchText = typeof parsed.patchText === "string" ? parsed.patchText : undefined
+      if (!patchText) return
+      return {
+        text: input.replace(m[0], "").trim(),
+        call: {
+          toolName,
+          args: {
+            patchText,
+          },
+        },
+      }
+    }
+
+    return
+  }
+
   async function travelJSONToSSE(res: Response) {
     const type = res.headers.get("content-type") ?? ""
     if (!type.includes("application/json")) return
@@ -234,7 +309,8 @@ export namespace Provider {
     const msg = message as Record<string, unknown>
     const content = typeof msg.content === "string" ? msg.content : ""
     const editor = content ? parseFileEditor(content) : undefined
-    const plain = editor ? editor.text : content
+    const toolCode = content ? parseToolCode(content) : undefined
+    const plain = editor ? editor.text : toolCode ? toolCode.text : content
     if (plain) delta.content = plain
     if (typeof msg.reasoning_text === "string" && msg.reasoning_text) delta.reasoning_text = msg.reasoning_text
     if (typeof msg.reasoning_opaque === "string" && msg.reasoning_opaque) delta.reasoning_opaque = msg.reasoning_opaque
@@ -260,6 +336,17 @@ export namespace Provider {
           function: {
             name: "edit",
             arguments: JSON.stringify(editor.args),
+          },
+        },
+      ]
+    } else if (toolCode) {
+      delta.tool_calls = [
+        {
+          index: 0,
+          id: "travel_tool_code_0",
+          function: {
+            name: toolCode.call.toolName,
+            arguments: JSON.stringify(toolCode.call.args),
           },
         },
       ]

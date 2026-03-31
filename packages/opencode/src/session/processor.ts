@@ -20,6 +20,7 @@ import type { SessionID, MessageID } from "./schema"
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
   const log = Log.create({ service: "session.processor" })
+  const streamDebug = process.env.OPENCODE_STREAM_DEBUG === "1"
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
@@ -289,6 +290,12 @@ export namespace SessionProcessor {
                   break
 
                 case "text-start":
+                  if (streamDebug) {
+                    log.info("stream.text.start", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                    })
+                  }
                   currentText = {
                     id: PartID.ascending(),
                     messageID: input.assistantMessage.id,
@@ -305,6 +312,14 @@ export namespace SessionProcessor {
 
                 case "text-delta":
                   if (currentText) {
+                    if (streamDebug) {
+                      log.info("stream.text.delta", {
+                        sessionID: currentText.sessionID,
+                        messageID: currentText.messageID,
+                        partID: currentText.id,
+                        delta: value.text.length,
+                      })
+                    }
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     await Session.updatePartDelta({
@@ -313,6 +328,13 @@ export namespace SessionProcessor {
                       partID: currentText.id,
                       field: "text",
                       delta: value.text,
+                    })
+                  }
+                  if (!currentText && streamDebug) {
+                    log.info("stream.text.delta_without_start", {
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      delta: value.text.length,
                     })
                   }
                   break

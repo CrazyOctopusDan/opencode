@@ -320,8 +320,11 @@ export function MessageTimeline(props: {
     messages: () => props.renderedUserMessages,
     config: stageCfg,
   })
-  const dbg = createMemo(() => import.meta.env.VITE_SESSION_DIAG === "true")
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
+  const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
+  const showDiag = createMemo(
+    () => !!sessionID() && (streamDebug() || working() || (row()?.health.miss ?? 0) > 0),
+  )
   const miss = createMemo(() =>
     Object.values(SessionDiagnostic.data).reduce((sum, item) => sum + (item?.health.miss ?? 0), 0),
   )
@@ -968,10 +971,18 @@ export function MessageTimeline(props: {
                 "mt-0": !props.centered,
               }}
             >
-              <Show when={dbg() && !!sessionID()}>
+              <Show when={showDiag()}>
                 <div class="w-full px-4 md:px-5">
                   <div class="rounded-[8px] border border-border-weak-base bg-background-base px-3 py-2 text-[11px] leading-5 font-mono text-text-weak">
-                    <div class="text-text-strong">diag</div>
+                    <div class="flex items-center justify-between">
+                      <div class="text-text-strong">diag</div>
+                      <button
+                        class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
+                        onClick={() => SessionDiagnostic.setDebug(!streamDebug())}
+                      >
+                        debug {streamDebug() ? "on" : "off"}
+                      </button>
+                    </div>
                     <div>
                       event: total={row()?.event.total ?? 0} upd={row()?.event.by["message.updated"] ?? 0} part=
                       {row()?.event.by["message.part.updated"] ?? 0} delta={row()?.event.by["message.part.delta"] ?? 0}{" "}
@@ -992,6 +1003,17 @@ export function MessageTimeline(props: {
                       {item()?.sync.before ?? 0} after={item()?.sync.after ?? 0} lost=
                       {item()?.sync.lost.join(",") || "n/a"} sync_at={fmt(item()?.sync.at)}
                     </div>
+                    <Show when={streamDebug()}>
+                      <div class="pt-1 text-text-strong">stream_log:</div>
+                      <For each={(row()?.health.log ?? []).slice(-8)}>
+                        {(log) => (
+                          <div>
+                            {fmt(log.at)} {log.kind} mid={log.messageID ?? "n/a"} pid={log.partID ?? "n/a"} reason=
+                            {log.reason ?? "n/a"} dlen={log.deltaLen ?? 0}
+                          </div>
+                        )}
+                      </For>
+                    </Show>
                   </div>
                 </div>
               </Show>

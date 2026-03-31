@@ -14,6 +14,7 @@ import type {
 import type { State, VcsCache } from "./types"
 import { trimSessions } from "./session-trim"
 import { dropSessionCaches } from "./session-cache"
+import { SessionDiagnostic } from "../session-diagnostic"
 
 export function applyGlobalEvent(input: {
   event: { type: string; properties?: unknown }
@@ -252,9 +253,29 @@ export function applyDirectoryEvent(input: {
     case "message.part.delta": {
       const props = event.properties as { messageID: string; partID: string; field: string; delta: string }
       const parts = input.store.part[props.messageID]
-      if (!parts) break
+      if (!parts) {
+        SessionDiagnostic.drop({
+          dir: input.directory,
+          reason: "missing_parts",
+          messageID: props.messageID,
+          partID: props.partID,
+          field: props.field,
+          deltaLen: props.delta.length,
+        })
+        break
+      }
       const result = Binary.search(parts, props.partID, (p) => p.id)
-      if (!result.found) break
+      if (!result.found) {
+        SessionDiagnostic.drop({
+          dir: input.directory,
+          reason: "missing_part",
+          messageID: props.messageID,
+          partID: props.partID,
+          field: props.field,
+          deltaLen: props.delta.length,
+        })
+        break
+      }
       input.setStore(
         "part",
         props.messageID,

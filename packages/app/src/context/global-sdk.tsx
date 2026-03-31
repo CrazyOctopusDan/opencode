@@ -49,7 +49,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let queue: Queued[] = []
     let buffer: Queued[] = []
     const coalesced = new Map<string, number>()
-    const staleDeltas = new Set<string>()
+    // Legacy logic (for quick rollback): staleDeltas skips all delta for a part
+    // once an updated event is seen in the same flush window.
+    // const staleDeltas = new Set<string>()
     let timer: ReturnType<typeof setTimeout> | undefined
     let last = 0
 
@@ -71,19 +73,52 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (queue.length === 0) return
 
       const events = queue
-      const skip = staleDeltas.size > 0 ? new Set(staleDeltas) : undefined
+      // Legacy logic (for quick rollback):
+      // const skip = staleDeltas.size > 0 ? new Set(staleDeltas) : undefined
+      const cut = new Map<string, number>()
+      for (let i = 0; i < events.length; i++) {
+        const event = events[i]
+        if (event.payload.type !== "message.part.updated") continue
+        const part = event.payload.properties.part
+        cut.set(deltaKey(event.directory, part.messageID, part.id), i)
+      }
       queue = buffer
       buffer = events
       queue.length = 0
       coalesced.clear()
-      staleDeltas.clear()
+      // Legacy logic (for quick rollback):
+      // staleDeltas.clear()
 
       last = Date.now()
       batch(() => {
-        for (const event of events) {
-          if (skip && event.payload.type === "message.part.delta") {
+        for (let i = 0; i < events.length; i++) {
+          const event = events[i]
+          if (event.payload.type === "message.part.delta") {
             const props = event.payload.properties
-            if (skip.has(deltaKey(event.directory, props.messageID, props.partID))) continue
+            const k = deltaKey(event.directory, props.messageID, props.partID)
+            const at = cut.get(k)
+            if (at !== undefined && i < at) {
+              SessionDiagnostic.trace({
+                dir: event.directory,
+                kind: "skip_stale_delta",
+                reason: "stale_delta",
+                sessionID: props.sessionID,
+                messageID: props.messageID,
+                partID: props.partID,
+                field: props.field,
+                deltaLen: props.delta.length,
+              })
+              SessionDiagnostic.drop({
+                dir: event.directory,
+                reason: "stale_delta",
+                sessionID: props.sessionID,
+                messageID: props.messageID,
+                partID: props.partID,
+                field: props.field,
+                deltaLen: props.delta.length,
+              })
+              continue
+            }
           }
           emitter.emit(event.directory, event.payload)
         }
@@ -163,15 +198,65 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               if (i !== undefined) {
                 queue[i] = { directory, payload }
                 SessionDiagnostic.coalesce(directory)
-                if (payload.type === "message.part.updated") {
+                if (payload.type === "message.part.updated" && SessionDiagnostic.debugOn()) {
                   const part = payload.properties.part
-                  staleDeltas.add(deltaKey(directory, part.messageID, part.id))
+                  SessionDiagnostic.trace({
+                    dir: directory,
+                    kind: "coalesce_updated",
+                    sessionID: part.sessionID,
+                    messageID: part.messageID,
+                    partID: part.id,
+                  })
+                  SessionDiagnostic.debugOut("coalesce_updated", {
+                    dir: directory,
+                    messageID: part.messageID,
+                    partID: part.id,
+                  })
                 }
                 continue
               }
               coalesced.set(k, queue.length)
             }
             queue.push({ directory, payload })
+            if (SessionDiagnostic.debugOn() && payload.type === "message.part.delta") {
+              const props = payload.properties
+              SessionDiagnostic.trace({
+                dir: directory,
+                kind: "recv_delta",
+                sessionID: props.sessionID,
+                messageID: props.messageID,
+                partID: props.partID,
+                field: props.field,
+                deltaLen: props.delta.length,
+              })
+              SessionDiagnostic.debugOut("recv_delta", {
+                dir: directory,
+                sessionID: props.sessionID,
+                messageID: props.messageID,
+                partID: props.partID,
+                field: props.field,
+                deltaLen: props.delta.length,
+              })
+            }
+            if (SessionDiagnostic.debugOn() && payload.type === "message.part.updated") {
+              const part = payload.properties.part
+              SessionDiagnostic.trace({
+                dir: directory,
+                kind: "recv_updated",
+                sessionID: part.sessionID,
+                messageID: part.messageID,
+                partID: part.id,
+              })
+              SessionDiagnostic.debugOut("recv_updated", {
+                dir: directory,
+                sessionID: part.sessionID,
+                messageID: part.messageID,
+                partID: part.id,
+                type: part.type,
+                hasEnd: "time" in part && part.time && "end" in part.time ? !!part.time.end : undefined,
+                textLen: part.type === "text" ? part.text.length : undefined,
+              })
+            }
             SessionDiagnostic.event({ dir: directory, evt: payload })
             schedule()
 
