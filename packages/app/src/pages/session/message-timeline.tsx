@@ -364,6 +364,43 @@ export function MessageTimeline(props: {
     return found ? "yes" : "no"
   })
 
+  createEffect(() => {
+    const id = sessionID()
+    if (!id) return
+    const dead = (globalRow()?.event.total ?? 0) === 0
+    const busy = sessionStatus().type !== "idle"
+    if (!dead || !busy) return
+
+    let stop = false
+    let t: ReturnType<typeof setTimeout> | undefined
+    const run = async () => {
+      if (stop) return
+      SessionDiagnostic.trace({
+        dir: sdk.directory,
+        kind: "fallback_poll",
+        reason: "global_event_silent",
+        sessionID: id,
+      })
+      await sdk.client.session
+        .status()
+        .then((x) => {
+          const next = x.data?.[id]
+          if (!next) return
+          sync.set("session_status", id, next)
+        })
+        .catch(() => {})
+      await sync.session.sync(id, { force: true }).catch(() => {})
+      if (stop) return
+      t = setTimeout(run, 1200)
+    }
+
+    void run()
+    onCleanup(() => {
+      stop = true
+      if (t) clearTimeout(t)
+    })
+  })
+
   const [title, setTitle] = createStore({
     draft: "",
     editing: false,
