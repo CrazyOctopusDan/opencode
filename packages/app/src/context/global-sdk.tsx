@@ -35,7 +35,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         return false
       }
     })()
-    let preferPlatform = canPlatform
+    // Prefer webview fetch for SSE first. In some desktop network stacks,
+    // platform.fetch may buffer SSE chunks and flush late.
+    let preferPlatform = false
+    // Legacy behavior (for quick rollback):
+    // let preferPlatform = canPlatform
 
     const emitter = createGlobalEmitter<{
       [key: string]: Event
@@ -157,6 +161,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     void (async () => {
       while (!abort.signal.aborted) {
         const eventFetch = canPlatform && preferPlatform ? platform.fetch : undefined
+        SessionDiagnostic.trace({
+          dir: "global",
+          kind: "event_fetch_mode",
+          reason: eventFetch ? "platform" : "webview",
+        })
         const eventSdk = createSdkForServer({
           signal: abort.signal,
           fetch: eventFetch,
@@ -265,6 +274,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             await wait(0)
           }
         } catch (error) {
+          SessionDiagnostic.trace({
+            dir: "global",
+            kind: "event_stream_error",
+            reason: "stream_failed",
+          })
           if (!aborted(error) && !streamErrorLogged) {
             streamErrorLogged = true
             console.error("[global-sdk] event stream failed", {
@@ -281,6 +295,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
         if (abort.signal.aborted) return
         if (canPlatform && !seen) {
+          SessionDiagnostic.trace({
+            dir: "global",
+            kind: "event_fetch_switch",
+            reason: preferPlatform ? "platform_to_webview" : "webview_to_platform",
+          })
           preferPlatform = !preferPlatform
         }
         await wait(RECONNECT_DELAY_MS)

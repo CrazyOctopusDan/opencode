@@ -321,6 +321,7 @@ export function MessageTimeline(props: {
     config: stageCfg,
   })
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
+  const globalRow = createMemo(() => SessionDiagnostic.data["global"])
   const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
   const showDiag = createMemo(
     () => !!sessionID() && (streamDebug() || working() || (row()?.health.miss ?? 0) > 0),
@@ -991,6 +992,10 @@ export function MessageTimeline(props: {
                       {row()?.event.last?.partID ?? "n/a"}
                     </div>
                     <div>
+                      global_event: total={globalRow()?.event.total ?? 0} last={globalRow()?.event.last?.type ?? "n/a"}@
+                      {fmt(globalRow()?.event.last?.at)}
+                    </div>
+                    <div>
                       store: msg={msgCount()} part={partCount()} pending_assistant={pendingCount()} orphan_part=
                       {orphanCount()}
                     </div>
@@ -1005,7 +1010,7 @@ export function MessageTimeline(props: {
                     </div>
                     <Show when={streamDebug()}>
                       <div class="pt-1 text-text-strong">stream_log:</div>
-                      <For each={(row()?.health.log ?? []).slice(-8)}>
+                      <For each={[...(globalRow()?.health.log ?? []), ...(row()?.health.log ?? [])].slice(-12)}>
                         {(log) => (
                           <div>
                             {fmt(log.at)} {log.kind} mid={log.messageID ?? "n/a"} pid={log.partID ?? "n/a"} reason=
