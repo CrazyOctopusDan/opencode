@@ -19,8 +19,8 @@ import type { SessionID, MessageID } from "./schema"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
-  const TEXT_FLUSH_MS = 400
-  const TEXT_FLUSH_CHARS = 80
+  const TEXT_FLUSH_MS = 180
+  const TEXT_FLUSH_CHARS = 24
   const log = Log.create({ service: "session.processor" })
   const streamDebug = process.env.OPENCODE_STREAM_DEBUG === "1"
 

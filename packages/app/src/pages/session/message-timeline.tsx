@@ -323,9 +323,12 @@ export function MessageTimeline(props: {
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
   const globalRow = createMemo(() => SessionDiagnostic.data["global"])
   const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
-  const showDiag = createMemo(
-    () => !!sessionID() && (streamDebug() || working() || (row()?.health.miss ?? 0) > 0),
-  )
+  // Temporary release mode: hide diag panel from UI.
+  // Legacy behavior (for quick rollback):
+  // const showDiag = createMemo(
+  //   () => !!sessionID() && (streamDebug() || working() || (row()?.health.miss ?? 0) > 0),
+  // )
+  const showDiag = createMemo(() => false)
   const miss = createMemo(() =>
     Object.values(SessionDiagnostic.data).reduce((sum, item) => sum + (item?.health.miss ?? 0), 0),
   )
@@ -374,22 +377,31 @@ export function MessageTimeline(props: {
     let stop = false
     let t: ReturnType<typeof setTimeout> | undefined
     let size = 0
+    let statusAt = 0
     const run = async () => {
       if (stop) return
-      SessionDiagnostic.trace({
-        dir: sdk.directory,
-        kind: "fallback_poll",
-        reason: "global_event_silent",
-        sessionID: id,
-      })
-      await sdk.client.session
-        .status()
-        .then((x) => {
-          const next = x.data?.[id]
-          if (!next) return
-          sync.set("session_status", id, next)
+      const deadNow = untrack(() => (globalRow()?.event.total ?? 0) === 0)
+      const pollMs = deadNow ? 250 : 1200
+      if (streamDebug()) {
+        SessionDiagnostic.trace({
+          dir: sdk.directory,
+          kind: "fallback_poll",
+          reason: deadNow ? "global_event_silent_fast" : "normal",
+          sessionID: id,
         })
-        .catch(() => {})
+      }
+      const now = Date.now()
+      if (now - statusAt >= 1000) {
+        statusAt = now
+        await sdk.client.session
+          .status()
+          .then((x) => {
+            const next = x.data?.[id]
+            if (!next) return
+            sync.set("session_status", id, next)
+          })
+          .catch(() => {})
+      }
       await sync.session.sync(id, { force: true }).catch(() => {})
       const snap = untrack(() => {
         const list = sync.data.message[id] ?? []
@@ -406,18 +418,20 @@ export function MessageTimeline(props: {
         }
       })
       if (snap && snap.textLen !== size) {
-        SessionDiagnostic.trace({
-          dir: sdk.directory,
-          kind: "poll_text_size",
-          reason: "global_event_silent",
-          sessionID: id,
-          messageID: snap.messageID,
-          deltaLen: snap.textLen - size,
-        })
+        if (streamDebug()) {
+          SessionDiagnostic.trace({
+            dir: sdk.directory,
+            kind: "poll_text_size",
+            reason: "global_event_silent",
+            sessionID: id,
+            messageID: snap.messageID,
+            deltaLen: snap.textLen - size,
+          })
+        }
         size = snap.textLen
       }
       if (stop) return
-      t = setTimeout(run, 600)
+      t = setTimeout(run, pollMs)
     }
 
     // Legacy fallback idea (for quick rollback):

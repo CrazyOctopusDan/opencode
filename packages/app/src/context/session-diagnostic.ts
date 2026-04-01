@@ -160,6 +160,7 @@ export const SessionDiagnostic = {
     field?: string
     deltaLen?: number
   }) {
+    if (!debugOn()) return
     ensureDir(input.dir)
     const row = {
       at: Date.now(),
