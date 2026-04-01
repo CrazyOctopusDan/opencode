@@ -1,4 +1,4 @@
-import { For, createEffect, createMemo, on, onCleanup, Show, Index, type JSX } from "solid-js"
+import { For, createEffect, createMemo, on, onCleanup, Show, Index, untrack, type JSX } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
@@ -373,6 +373,7 @@ export function MessageTimeline(props: {
 
     let stop = false
     let t: ReturnType<typeof setTimeout> | undefined
+    let size = 0
     const run = async () => {
       if (stop) return
       SessionDiagnostic.trace({
@@ -390,6 +391,31 @@ export function MessageTimeline(props: {
         })
         .catch(() => {})
       await sync.session.sync(id, { force: true }).catch(() => {})
+      const snap = untrack(() => {
+        const list = sync.data.message[id] ?? []
+        const msg = list.findLast((item): item is AssistantMessage => item.role === "assistant")
+        if (!msg) return
+        const parts = sync.data.part[msg.id] ?? []
+        const text = parts
+          .filter((part): part is TextPart => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+        return {
+          messageID: msg.id,
+          textLen: text.length,
+        }
+      })
+      if (snap && snap.textLen !== size) {
+        SessionDiagnostic.trace({
+          dir: sdk.directory,
+          kind: "poll_text_size",
+          reason: "global_event_silent",
+          sessionID: id,
+          messageID: snap.messageID,
+          deltaLen: snap.textLen - size,
+        })
+        size = snap.textLen
+      }
       if (stop) return
       t = setTimeout(run, 600)
     }
