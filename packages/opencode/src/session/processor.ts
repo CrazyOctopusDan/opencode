@@ -19,6 +19,8 @@ import type { SessionID, MessageID } from "./schema"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
+  const TEXT_FLUSH_MS = 400
+  const TEXT_FLUSH_CHARS = 80
   const log = Log.create({ service: "session.processor" })
   const streamDebug = process.env.OPENCODE_STREAM_DEBUG === "1"
 
@@ -52,6 +54,8 @@ export namespace SessionProcessor {
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+            let textAt = 0
+            let textLen = 0
             const stream = await LLM.stream(streamInput)
 
             for await (const value of stream.fullStream) {
@@ -307,6 +311,8 @@ export namespace SessionProcessor {
                     },
                     metadata: value.providerMetadata,
                   }
+                  textAt = Date.now()
+                  textLen = 0
                   await Session.updatePart(currentText)
                   break
 
@@ -329,6 +335,20 @@ export namespace SessionProcessor {
                       field: "text",
                       delta: value.text,
                     })
+                    const now = Date.now()
+                    if (currentText.text.length - textLen >= TEXT_FLUSH_CHARS || now - textAt >= TEXT_FLUSH_MS) {
+                      await Session.updatePart(currentText)
+                      textAt = now
+                      textLen = currentText.text.length
+                      if (streamDebug) {
+                        log.info("stream.text.flush", {
+                          sessionID: currentText.sessionID,
+                          messageID: currentText.messageID,
+                          partID: currentText.id,
+                          text: currentText.text.length,
+                        })
+                      }
+                    }
                   }
                   if (!currentText && streamDebug) {
                     log.info("stream.text.delta_without_start", {
@@ -353,7 +373,7 @@ export namespace SessionProcessor {
                     )
                     currentText.text = textOutput.text
                     currentText.time = {
-                      start: Date.now(),
+                      start: currentText.time?.start ?? Date.now(),
                       end: Date.now(),
                     }
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata

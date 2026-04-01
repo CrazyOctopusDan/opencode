@@ -391,9 +391,12 @@ export function MessageTimeline(props: {
         .catch(() => {})
       await sync.session.sync(id, { force: true }).catch(() => {})
       if (stop) return
-      t = setTimeout(run, 1200)
+      t = setTimeout(run, 600)
     }
 
+    // Legacy fallback idea (for quick rollback):
+    // only poll session.status and skip session.sync
+    // That updates "busy/idle" but cannot fetch new part text.
     void run()
     onCleanup(() => {
       stop = true
