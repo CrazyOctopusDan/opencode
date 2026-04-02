@@ -84,6 +84,19 @@ type TraceRow = {
 const emptyMessages: MessageType[] = []
 const idle = { type: "idle" as const }
 const fmt = (at?: number) => (typeof at === "number" ? new Date(at).toLocaleTimeString() : "n/a")
+const flowKey = "opencode:pseudo-flow"
+const flowRead = () => {
+  if (typeof localStorage === "undefined") return false
+  return localStorage.getItem(flowKey) === "1"
+}
+const flowWrite = (on: boolean) => {
+  if (typeof localStorage === "undefined") return
+  if (on) {
+    localStorage.setItem(flowKey, "1")
+    return
+  }
+  localStorage.removeItem(flowKey)
+}
 const clip = (text: string) => text.replace(/\s+/g, " ").trim()
 
 const parseTrace = (value: unknown): TraceRow[] => {
@@ -385,6 +398,9 @@ export function MessageTimeline(props: {
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
   const globalRow = createMemo(() => SessionDiagnostic.data["global"])
   const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
+  const [diag, setDiag] = createStore({
+    flow: flowRead(),
+  })
   const showDiag = createMemo(() => !!sessionID())
   const [trace, setTrace] = createStore({
     open: true,
@@ -451,6 +467,7 @@ export function MessageTimeline(props: {
   })
 
   createEffect(() => {
+    if (!diag.flow) return
     const id = sessionID()
     if (!id) return
     const dead = (globalRow()?.event.total ?? 0) === 0
@@ -1165,6 +1182,16 @@ export function MessageTimeline(props: {
                     <div class="flex items-center justify-between">
                       <div class="text-text-strong">diag</div>
                       <div class="flex items-center gap-1.5">
+                        <button
+                          class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
+                          onClick={() => {
+                            const next = !diag.flow
+                            setDiag("flow", next)
+                            flowWrite(next)
+                          }}
+                        >
+                          flow {diag.flow ? "on" : "off"}
+                        </button>
                         <button
                           class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
                           onClick={() => {
