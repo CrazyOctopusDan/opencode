@@ -47,6 +47,7 @@ import { ProviderTransform } from "./transform"
 import { Installation } from "../installation"
 import { ModelPolicy } from "./model-policy"
 import { ModelID, ProviderID } from "./schema"
+import { ProtocolTraceStore } from "./protocol-trace"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -174,6 +175,29 @@ export namespace Provider {
     if (!input || typeof input !== "object") return
     if ("url" in input && typeof input.url === "string") return input.url
     return
+  }
+
+  function pathFromURL(input: string | undefined) {
+    if (!input) return ""
+    try {
+      return new URL(input).pathname || ""
+    } catch {
+      return input
+    }
+  }
+
+  function sessionFrom(input: { headers?: HeadersInit; body?: unknown }) {
+    const headers = new Headers(input.headers)
+    const head = headers.get("x-opencode-session")
+    if (head) return head
+    const body = parseBody(input.body)
+    if (!body) return
+    if (typeof body.sessionID === "string") return body.sessionID
+    return
+  }
+
+  function traceID() {
+    return `pt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   }
 
   function isChatPath(url: string) {
@@ -396,6 +420,7 @@ export namespace Provider {
   }
 
   export function resolveNpm(providerID: string, npm: string) {
+    if (!Flag.OPENCODE_EXPERIMENTAL_TRAVEL_SPECIAL) return npm
     if (providerID !== travel) return npm
     if (npm === copilot) return openaiCompatible
     return npm
@@ -403,6 +428,39 @@ export namespace Provider {
 
   export function travelTrace() {
     return lastTravel
+  }
+
+  export function protocolTrace(input: { sessionID?: string; limit?: number }) {
+    if (!Flag.OPENCODE_EXPERIMENTAL_PROTOCOL_TRACE) return []
+    return ProtocolTraceStore.read(input)
+  }
+
+  function wrapTrace(res: Response, id: string) {
+    if (!res.body) return res
+    if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    const body = new ReadableStream<Uint8Array>({
+      async pull(ctrl) {
+        const part = await reader.read()
+        if (part.done) {
+          ctrl.close()
+          return
+        }
+        ProtocolTraceStore.frame(id, dec.decode(part.value, { stream: true }))
+        ctrl.enqueue(part.value)
+      },
+      async cancel(reason) {
+        await reader.cancel(reason)
+      },
+    })
+    const headers = new Headers(res.headers)
+    headers.set("x-opencode-trace-id", id)
+    return new Response(body, {
+      headers,
+      status: res.status,
+      statusText: res.statusText,
+    })
   }
 
   function shouldUseCopilotResponsesApi(modelID: string): boolean {
@@ -1646,8 +1704,23 @@ export namespace Provider {
         if (combined) opts.signal = combined
 
         const url = resolveURL(input)
-        const travelStream = isTravel && url && isChatPath(url) && opts.method === "POST" && isStreamBody(opts.body)
-        if (isTravel && url && isChatPath(url) && opts.method === "POST") {
+        const path = pathFromURL(url)
+        const travelSpecial =
+          Flag.OPENCODE_EXPERIMENTAL_TRAVEL_SPECIAL && isTravel && url && isChatPath(url) && opts.method === "POST"
+        const travelStream = travelSpecial && isStreamBody(opts.body)
+        const useTrace =
+          Flag.OPENCODE_EXPERIMENTAL_PROTOCOL_TRACE && npm.includes(openaiCompatible) && opts.method === "POST"
+        const id = useTrace ? traceID() : ""
+        if (useTrace) {
+          ProtocolTraceStore.start({
+            id,
+            provider: model.providerID,
+            model: model.id,
+            path,
+            sessionID: sessionFrom({ headers: opts.headers, body: opts.body }),
+          })
+        }
+        if (travelSpecial) {
           const body = normalizeTravelBody(opts.body)
           if (body) {
             opts.body = JSON.stringify(body)
@@ -1698,10 +1771,28 @@ export namespace Provider {
           timeout: false,
         })
 
+        if (useTrace) {
+          const type = res.headers.get("content-type") ?? ""
+          ProtocolTraceStore.upstream(id, {
+            status: res.status,
+            type,
+            sse: type.includes("text/event-stream"),
+          })
+          if (!type.includes("text/event-stream")) {
+            const sample = await res
+              .clone()
+              .text()
+              .then((text) => text.slice(0, 400))
+              .catch(() => "")
+            if (sample) ProtocolTraceStore.frame(id, sample)
+          }
+        }
+
         const sse = travelStream ? await travelJSONToSSE(res) : undefined
         const next = sse ?? res
-        if (!chunkAbortCtl) return next
-        return wrapSSE(next, chunkTimeout, chunkAbortCtl)
+        const traced = useTrace ? wrapTrace(next, id) : next
+        if (!chunkAbortCtl) return traced
+        return wrapSSE(traced, chunkTimeout, chunkAbortCtl)
       }
 
       const bundledFn = BUNDLED_PROVIDERS[npm]

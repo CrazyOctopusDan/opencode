@@ -40,9 +40,71 @@ type MessageComment = {
   }
 }
 
+type TraceRow = {
+  id: string
+  at: number
+  sessionID?: string
+  provider: string
+  model: string
+  path: string
+  upstream: {
+    status?: number
+    type?: string
+    sse?: boolean
+    first?: string
+    last?: string
+  }
+  parsed: {
+    chunk: number
+    ok: number
+    err: number
+    text: number
+    tool: number
+    finish: Record<string, number>
+    code: Record<string, number>
+    hit: {
+      reasoning: boolean
+      text: boolean
+      tool_input_start: boolean
+      tool_input_delta: boolean
+      tool_input_end: boolean
+      tool_call: boolean
+    }
+  }
+  judge: {
+    level: "ok" | "warn" | "error"
+    code: string
+    note: string
+    tip: string
+    finish?: string
+    tool: boolean
+  }
+}
+
 const emptyMessages: MessageType[] = []
 const idle = { type: "idle" as const }
 const fmt = (at?: number) => (typeof at === "number" ? new Date(at).toLocaleTimeString() : "n/a")
+const clip = (text: string) => text.replace(/\s+/g, " ").trim()
+
+const parseTrace = (value: unknown): TraceRow[] => {
+  if (!value || typeof value !== "object") return []
+  if (!("debug_protocol" in value)) return []
+  const list = (value as { debug_protocol?: unknown }).debug_protocol
+  if (!Array.isArray(list)) return []
+  return list.flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const row = item as Partial<TraceRow>
+    if (typeof row.id !== "string") return []
+    if (typeof row.at !== "number") return []
+    if (typeof row.provider !== "string") return []
+    if (typeof row.model !== "string") return []
+    if (typeof row.path !== "string") return []
+    if (!row.upstream || typeof row.upstream !== "object") return []
+    if (!row.parsed || typeof row.parsed !== "object") return []
+    if (!row.judge || typeof row.judge !== "object") return []
+    return [row as TraceRow]
+  })
+}
 
 type UserActions = {
   fork?: (input: { sessionID: string; messageID: string }) => Promise<void> | void
@@ -323,12 +385,33 @@ export function MessageTimeline(props: {
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
   const globalRow = createMemo(() => SessionDiagnostic.data["global"])
   const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
-  // Temporary release mode: hide diag panel from UI.
-  // Legacy behavior (for quick rollback):
-  // const showDiag = createMemo(
-  //   () => !!sessionID() && (streamDebug() || working() || (row()?.health.miss ?? 0) > 0),
-  // )
-  const showDiag = createMemo(() => false)
+  const showDiag = createMemo(() => !!sessionID())
+  const [trace, setTrace] = createStore({
+    open: true,
+    rows: [] as TraceRow[],
+    at: 0,
+  })
+  const traceRows = createMemo(() => {
+    const id = sessionID()
+    if (!id) return trace.rows.slice(0, 3)
+    const fit = trace.rows.filter((item) => item.sessionID === id)
+    if (fit.length) return fit.slice(0, 3)
+    return trace.rows.slice(0, 3)
+  })
+  const traceCopy = createMemo(() =>
+    traceRows()
+      .map((item) =>
+        [
+          `[${new Date(item.at).toLocaleString()}] ${item.provider}/${item.model} req=${item.id}`,
+          `path=${item.path} sse=${item.upstream.sse ? "yes" : "no"} status=${item.upstream.status ?? "n/a"} type=${item.upstream.type ?? "n/a"}`,
+          `chunks=${item.parsed.chunk} ok=${item.parsed.ok} err=${item.parsed.err} text=${item.parsed.text} tool=${item.parsed.tool} finish=${Object.keys(item.parsed.finish).join(",") || "n/a"}`,
+          `judge=${item.judge.level}:${item.judge.code} note=${item.judge.note} tip=${item.judge.tip}`,
+          `first=${clip(item.upstream.first ?? "n/a")}`,
+          `last=${clip(item.upstream.last ?? "n/a")}`,
+        ].join("\n"),
+      )
+      .join("\n\n"),
+  )
   const miss = createMemo(() =>
     Object.values(SessionDiagnostic.data).reduce((sum, item) => sum + (item?.health.miss ?? 0), 0),
   )
@@ -441,6 +524,30 @@ export function MessageTimeline(props: {
     onCleanup(() => {
       stop = true
       if (t) clearTimeout(t)
+    })
+  })
+
+  createEffect(() => {
+    const id = sessionID()
+    if (!id || !showDiag()) return
+    let stop = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const run = async () => {
+      if (stop) return
+      await sdk.client.provider
+        .list()
+        .then((result) => {
+          const rows = parseTrace(result.data)
+          setTrace({ rows, at: Date.now() })
+        })
+        .catch(() => {})
+      if (stop) return
+      timer = setTimeout(run, untrack(() => (working() ? 1500 : 4000)))
+    }
+    void run()
+    onCleanup(() => {
+      stop = true
+      if (timer) clearTimeout(timer)
     })
   })
 
@@ -1057,12 +1164,29 @@ export function MessageTimeline(props: {
                   <div class="rounded-[8px] border border-border-weak-base bg-background-base px-3 py-2 text-[11px] leading-5 font-mono text-text-weak">
                     <div class="flex items-center justify-between">
                       <div class="text-text-strong">diag</div>
-                      <button
-                        class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
-                        onClick={() => SessionDiagnostic.setDebug(!streamDebug())}
-                      >
-                        debug {streamDebug() ? "on" : "off"}
-                      </button>
+                      <div class="flex items-center gap-1.5">
+                        <button
+                          class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
+                          onClick={() => {
+                            if (!traceCopy()) return
+                            void navigator.clipboard?.writeText(traceCopy())
+                          }}
+                        >
+                          copy
+                        </button>
+                        <button
+                          class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
+                          onClick={() => setTrace("open", (v) => !v)}
+                        >
+                          {trace.open ? "collapse" : "expand"}
+                        </button>
+                        <button
+                          class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
+                          onClick={() => SessionDiagnostic.setDebug(!streamDebug())}
+                        >
+                          debug {streamDebug() ? "on" : "off"}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       event: total={row()?.event.total ?? 0} upd={row()?.event.by["message.updated"] ?? 0} part=
@@ -1095,6 +1219,48 @@ export function MessageTimeline(props: {
                           <div>
                             {fmt(log.at)} {log.kind} mid={log.messageID ?? "n/a"} pid={log.partID ?? "n/a"} reason=
                             {log.reason ?? "n/a"} dlen={log.deltaLen ?? 0}
+                          </div>
+                        )}
+                      </For>
+                    </Show>
+                    <Show when={trace.open}>
+                      <div class="pt-1 text-text-strong">protocol_trace:</div>
+                      <div>updated={fmt(trace.at)} rows={traceRows().length}</div>
+                      <For each={traceRows()}>
+                        {(item) => (
+                          <div class="mt-1 rounded border border-border-weak-base bg-background-stronger px-2 py-1">
+                            <div>
+                              {item.provider}/{item.model} req={item.id} @{fmt(item.at)}
+                            </div>
+                            <div>
+                              judge={item.judge.level}:{item.judge.code} finish={item.judge.finish ?? "n/a"} tip=
+                              {item.judge.tip}
+                            </div>
+                            <div>
+                              layer1: status={item.upstream.status ?? "n/a"} sse={item.upstream.sse ? "yes" : "no"} type=
+                              {item.upstream.type ?? "n/a"}
+                            </div>
+                            <div>first={clip(item.upstream.first ?? "n/a")}</div>
+                            <div>last={clip(item.upstream.last ?? "n/a")}</div>
+                            <div>
+                              layer2: chunk={item.parsed.chunk} ok={item.parsed.ok} err={item.parsed.err} text=
+                              {item.parsed.text} tool={item.parsed.tool} finish=
+                              {Object.keys(item.parsed.finish).join(",") || "n/a"}
+                            </div>
+                            <div>
+                              layer3: hit=
+                              {[
+                                item.parsed.hit.reasoning ? "reasoning" : "",
+                                item.parsed.hit.text ? "text" : "",
+                                item.parsed.hit.tool_input_start ? "tool_input_start" : "",
+                                item.parsed.hit.tool_input_delta ? "tool_input_delta" : "",
+                                item.parsed.hit.tool_input_end ? "tool_input_end" : "",
+                                item.parsed.hit.tool_call ? "tool_call" : "",
+                              ]
+                                .filter((x) => x)
+                                .join("|") || "n/a"}{" "}
+                              code={Object.keys(item.parsed.code).join(",") || "n/a"}
+                            </div>
                           </div>
                         )}
                       </For>

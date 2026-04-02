@@ -46,8 +46,8 @@ test("travelSky request body parser returns undefined for invalid body", () => {
   expect(Provider.normalizeTravelBody("not-json")).toBeUndefined()
 })
 
-test("travelSky npm rewrite only applies to travelSky", () => {
-  expect(Provider.resolveNpm("travelSky", "@ai-sdk/github-copilot")).toBe("@ai-sdk/openai-compatible")
+test("travelSky npm rewrite is disabled by default", () => {
+  expect(Provider.resolveNpm("travelSky", "@ai-sdk/github-copilot")).toBe("@ai-sdk/github-copilot")
   expect(Provider.resolveNpm("travelSky", "@ai-sdk/openai-compatible")).toBe("@ai-sdk/openai-compatible")
   expect(Provider.resolveNpm("openai", "@ai-sdk/github-copilot")).toBe("@ai-sdk/github-copilot")
 })

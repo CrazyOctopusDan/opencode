@@ -37,6 +37,7 @@ export const ProviderRoutes = lazy(() =>
                     all: ModelsDev.Provider.array(),
                     default: z.record(z.string(), z.string()),
                     connected: z.array(z.string()),
+                    debug_protocol: z.any().optional(),
                   }),
                 ),
               },
@@ -66,6 +67,7 @@ export const ProviderRoutes = lazy(() =>
             connected: Object.keys(providers),
             debug_tempo: debugTempo,
             debug_travel: debugTravel,
+            debug_protocol: Provider.protocolTrace({ limit: 12 }),
           })
         }
         const config = await Config.get()
@@ -91,6 +93,41 @@ export const ProviderRoutes = lazy(() =>
           connected: Object.keys(connected),
           debug_tempo: debugTempo,
           debug_travel: debugTravel,
+          debug_protocol: Provider.protocolTrace({ limit: 12 }),
+        })
+      },
+    )
+    .get(
+      "/debug/protocol",
+      describeRoute({
+        summary: "Get openai-compatible protocol trace",
+        description: "Return recent protocol traces for OpenAI-compatible requests.",
+        operationId: "provider.debug.protocol",
+        responses: {
+          200: {
+            description: "Protocol debug payload",
+            content: {
+              "application/json": {
+                schema: resolver(z.any()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          sessionID: z.string().optional(),
+          limit: z.coerce.number().int().positive().max(50).optional(),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        return c.json({
+          items: Provider.protocolTrace({
+            sessionID: query.sessionID,
+            limit: query.limit ?? 20,
+          }),
         })
       },
     )
