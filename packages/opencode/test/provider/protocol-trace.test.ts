@@ -5,7 +5,7 @@ test("protocol trace reports tool-call success", () => {
   const id = `pt_test_${Date.now()}`
   ProtocolTraceStore.start({
     id,
-    provider: "travelSky",
+    provider: "openai-compatible",
     model: "qwen3.5-27b",
     path: "/chat/completions",
     sessionID: "ses_1",
@@ -29,7 +29,7 @@ test("protocol trace reports unknown finish", () => {
   const id = `pt_test_${Date.now()}_b`
   ProtocolTraceStore.start({
     id,
-    provider: "travelSky",
+    provider: "openai-compatible",
     model: "qwen3.5-27b",
     path: "/chat/completions",
   })
@@ -40,4 +40,3 @@ test("protocol trace reports unknown finish", () => {
   expect(row.id).toBe(id)
   expect(row.judge.code).toBe("unknown_finish")
 })
-

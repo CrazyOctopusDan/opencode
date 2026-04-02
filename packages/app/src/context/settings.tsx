@@ -26,6 +26,7 @@ export interface Settings {
     showReasoningSummaries: boolean
     shellToolPartsExpanded: boolean
     editToolPartsExpanded: boolean
+    diagnosticPanel: boolean
   }
   updates: {
     startup: boolean
@@ -50,6 +51,7 @@ const defaultSettings: Settings = {
     showReasoningSummaries: false,
     shellToolPartsExpanded: true,
     editToolPartsExpanded: false,
+    diagnosticPanel: false,
   },
   updates: {
     startup: true,
@@ -152,6 +154,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         ),
         setEditToolPartsExpanded(value: boolean) {
           setStore("general", "editToolPartsExpanded", value)
+        },
+        diagnosticPanel: withFallback(() => store.general?.diagnosticPanel, defaultSettings.general.diagnosticPanel),
+        setDiagnosticPanel(value: boolean) {
+          setStore("general", "diagnosticPanel", value)
         },
       },
       updates: {

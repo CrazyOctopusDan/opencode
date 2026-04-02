@@ -7,51 +7,6 @@ import { Provider } from "../../src/provider/provider"
 import { ProviderID, ModelID } from "../../src/provider/schema"
 import { Env } from "../../src/env"
 
-test("travelSky request body normalized to minimal payload", () => {
-  const out = Provider.normalizeTravelBody({
-    model: "Qwen3-Coder-30B",
-    temperature: 0.7,
-    top_p: 0.95,
-    messages: [
-      { role: "system", content: "sys" },
-      { role: "user", content: [{ type: "text", text: "hello" }, { type: "image_url", image_url: { url: "x" } }] },
-      { role: "tool", content: [{ type: "text", text: "tool ok" }] },
-    ],
-  })
-
-  expect(out).toEqual({
-    model: "Qwen3-Coder-30B",
-    stream: true,
-    messages: [
-      { role: "system", content: "sys" },
-      { role: "user", content: "hello\n[attachment]" },
-      { role: "assistant", content: "tool ok" },
-    ],
-  })
-})
-
-test("travelSky request body always enables stream", () => {
-  const out = Provider.normalizeTravelBody({
-    model: "Qwen3-Coder-30B",
-    messages: [{ role: "user", content: "hi" }],
-  })
-  expect(out).toEqual({
-    model: "Qwen3-Coder-30B",
-    stream: true,
-    messages: [{ role: "user", content: "hi" }],
-  })
-})
-
-test("travelSky request body parser returns undefined for invalid body", () => {
-  expect(Provider.normalizeTravelBody("not-json")).toBeUndefined()
-})
-
-test("travelSky npm rewrite is disabled by default", () => {
-  expect(Provider.resolveNpm("travelSky", "@ai-sdk/github-copilot")).toBe("@ai-sdk/github-copilot")
-  expect(Provider.resolveNpm("travelSky", "@ai-sdk/openai-compatible")).toBe("@ai-sdk/openai-compatible")
-  expect(Provider.resolveNpm("openai", "@ai-sdk/github-copilot")).toBe("@ai-sdk/github-copilot")
-})
-
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

@@ -51,32 +51,7 @@ import { ProtocolTraceStore } from "./protocol-trace"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
-  const travel = "travelSky"
   const openaiCompatible = "@ai-sdk/openai-compatible"
-  const copilot = "@ai-sdk/github-copilot"
-
-  type TravelTrace = {
-    at: string
-    providerID: string
-    modelID: string
-    url?: string
-    rewritten: boolean
-    reason?: string
-    payload?: {
-      model?: string
-      stream?: boolean
-      messages: {
-        role: string
-        content: string
-      }[]
-    }
-  }
-  let lastTravel: TravelTrace | undefined
-
-  function trim(value: string, max = 240) {
-    if (value.length <= max) return value
-    return `${value.slice(0, max)}...`
-  }
 
   function parseJSON(value: string) {
     try {
@@ -97,75 +72,6 @@ export namespace Provider {
     }
     if (typeof value === "object") return value as Record<string, unknown>
     return
-  }
-
-  function toTextPart(value: unknown): string {
-    if (typeof value === "string") return value
-    if (!value || typeof value !== "object") return ""
-    const row = value as Record<string, unknown>
-    if (typeof row.text === "string") return row.text
-    if (typeof row.content === "string") return row.content
-    if (
-      row.type === "image" ||
-      row.type === "image_url" ||
-      row.type === "file" ||
-      row.type === "input_image" ||
-      row.type === "input_file"
-    )
-      return "[attachment]"
-    if (row.type === "tool-call") {
-      const name = typeof row.toolName === "string" ? row.toolName : "tool"
-      return `[tool-call:${name}]`
-    }
-    if (row.type === "tool-result") return "[tool-result]"
-    return ""
-  }
-
-  function toText(value: unknown) {
-    if (typeof value === "string") return value
-    if (Array.isArray(value)) return value.map((item) => toTextPart(item)).filter((item) => item.trim() !== "").join("\n")
-    return toTextPart(value)
-  }
-
-  export function normalizeTravelBody(value: unknown) {
-    const body = parseBody(value)
-    if (!body) return
-    const model = typeof body.model === "string" ? body.model : undefined
-    const list = Array.isArray(body.messages) ? body.messages : []
-    const messages = list.flatMap((item) => {
-      if (!item || typeof item !== "object") return []
-      const row = item as Record<string, unknown>
-      const role = typeof row.role === "string" ? row.role : "user"
-      const content = toText(row.content)
-      if (!content.trim()) return []
-      return [
-        {
-          role: role === "tool" ? "assistant" : role,
-          content,
-        },
-      ]
-    })
-    const out: {
-      model?: string
-      stream: boolean
-      messages: {
-        role: string
-        content: string
-      }[]
-    } = { stream: true, messages }
-    if (model) out.model = model
-    return out
-  }
-
-  function summarizeTravelBody(value: ReturnType<typeof normalizeTravelBody> | undefined) {
-    if (!value) return
-    return {
-      ...(value.model ? { model: value.model } : {}),
-      messages: value.messages.map((item) => ({
-        role: item.role,
-        content: trim(item.content),
-      })),
-    }
   }
 
   function resolveURL(input: unknown) {
@@ -198,236 +104,6 @@ export namespace Provider {
 
   function traceID() {
     return `pt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
-  }
-
-  function isChatPath(url: string) {
-    try {
-      return new URL(url).pathname.endsWith("/chat/completions")
-    } catch {
-      return url.split("?")[0].endsWith("/chat/completions")
-    }
-  }
-
-  function isStreamBody(value: unknown) {
-    const body = parseBody(value)
-    if (!body) return false
-    return body.stream === true
-  }
-
-  // 航信模型特别修改
-  function pullTag(input: string, tag: string) {
-    const r = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i")
-    const m = input.match(r)
-    if (!m) return
-    return m[1].trim()
-  }
-
-  // 航信模型特别修改
-  function parseFileEditor(input: string) {
-    const m = input.match(/<file_editor>([\s\S]*?)<\/file_editor>/i)
-    if (!m) return
-    const body = m[1]
-    const filePath = pullTag(body, "file_path")
-    const oldString = pullTag(body, "old_content")
-    const newString = pullTag(body, "new_content")
-    if (!filePath || oldString === undefined || newString === undefined) return
-    const args = {
-      filePath,
-      oldString,
-      newString,
-    }
-    return {
-      text: input.replace(m[0], "").trim(),
-      args,
-    }
-  }
-
-  // 航信模型特别修改
-  function mapToolName(name: string) {
-    const key = name.trim().toLowerCase()
-    if (["file_write", "write_file", "filewrite"].includes(key)) return "write"
-    if (["file_edit", "edit_file", "fileeditor", "file_editor"].includes(key)) return "edit"
-    if (["apply_patch", "patch_apply", "file_patch"].includes(key)) return "apply_patch"
-    return
-  }
-
-  // 航信模型特别修改
-  function parseToolCode(input: string) {
-    const m = input.match(/<tool_code>([\s\S]*?)<\/tool_code>/i)
-    if (!m) return
-    const body = m[1]
-    const rawName = pullTag(body, "tool_name")
-    const rawInput = pullTag(body, "tool_input")
-    if (!rawName || !rawInput) return
-    const toolName = mapToolName(rawName)
-    if (!toolName) return
-    const parsed = parseJSON(rawInput)
-    if (!parsed) return
-
-    if (toolName === "write") {
-      const filePath = typeof parsed.filePath === "string" ? parsed.filePath : undefined
-      const content = typeof parsed.content === "string" ? parsed.content : undefined
-      if (!filePath || content === undefined) return
-      return {
-        text: input.replace(m[0], "").trim(),
-        call: {
-          toolName,
-          args: {
-            filePath,
-            content,
-          },
-        },
-      }
-    }
-
-    if (toolName === "edit") {
-      const filePath = typeof parsed.filePath === "string" ? parsed.filePath : undefined
-      const oldString = typeof parsed.oldString === "string" ? parsed.oldString : undefined
-      const newString = typeof parsed.newString === "string" ? parsed.newString : undefined
-      const replaceAll = typeof parsed.replaceAll === "boolean" ? parsed.replaceAll : undefined
-      if (!filePath || oldString === undefined || newString === undefined) return
-      return {
-        text: input.replace(m[0], "").trim(),
-        call: {
-          toolName,
-          args: {
-            filePath,
-            oldString,
-            newString,
-            ...(replaceAll !== undefined ? { replaceAll } : {}),
-          },
-        },
-      }
-    }
-
-    if (toolName === "apply_patch") {
-      const patchText = typeof parsed.patchText === "string" ? parsed.patchText : undefined
-      if (!patchText) return
-      return {
-        text: input.replace(m[0], "").trim(),
-        call: {
-          toolName,
-          args: {
-            patchText,
-          },
-        },
-      }
-    }
-
-    return
-  }
-
-  async function travelJSONToSSE(res: Response) {
-    const type = res.headers.get("content-type") ?? ""
-    if (!type.includes("application/json")) return
-    const text = await res.text()
-    const body = parseJSON(text)
-    if (!body) return
-    const list = Array.isArray(body.choices) ? body.choices : []
-    const choice = list[0]
-    if (!choice || typeof choice !== "object") return
-    const row = choice as Record<string, unknown>
-    const message = row.message
-    if (!message || typeof message !== "object") return
-    const delta: Record<string, unknown> = { role: "assistant" }
-    const msg = message as Record<string, unknown>
-    const content = typeof msg.content === "string" ? msg.content : ""
-    const editor = content ? parseFileEditor(content) : undefined
-    const toolCode = content ? parseToolCode(content) : undefined
-    const plain = editor ? editor.text : toolCode ? toolCode.text : content
-    if (plain) delta.content = plain
-    if (typeof msg.reasoning_text === "string" && msg.reasoning_text) delta.reasoning_text = msg.reasoning_text
-    if (typeof msg.reasoning_opaque === "string" && msg.reasoning_opaque) delta.reasoning_opaque = msg.reasoning_opaque
-    const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : []
-    if (calls.length > 0) {
-      delta.tool_calls = calls.map((item, i) => {
-        const call = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
-        const fn = call.function && typeof call.function === "object" ? (call.function as Record<string, unknown>) : {}
-        return {
-          index: i,
-          id: typeof call.id === "string" ? call.id : undefined,
-          function: {
-            name: typeof fn.name === "string" ? fn.name : undefined,
-            arguments: typeof fn.arguments === "string" ? fn.arguments : undefined,
-          },
-        }
-      })
-    } else if (editor && editor.args.oldString !== editor.args.newString) {
-      delta.tool_calls = [
-        {
-          index: 0,
-          id: "travel_file_editor_0",
-          function: {
-            name: "edit",
-            arguments: JSON.stringify(editor.args),
-          },
-        },
-      ]
-    } else if (toolCode) {
-      delta.tool_calls = [
-        {
-          index: 0,
-          id: "travel_tool_code_0",
-          function: {
-            name: toolCode.call.toolName,
-            arguments: JSON.stringify(toolCode.call.args),
-          },
-        },
-      ]
-    }
-    const finish =
-      delta.tool_calls && Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0
-        ? "tool_calls"
-        : typeof row.finish_reason === "string"
-          ? row.finish_reason
-          : null
-    const data = {
-      id: typeof body.id === "string" ? body.id : undefined,
-      created: typeof body.created === "number" ? body.created : undefined,
-      model: typeof body.model === "string" ? body.model : undefined,
-      choices: [
-        {
-          index: 0,
-          delta,
-          finish_reason: null,
-        },
-      ],
-      usage: undefined,
-    }
-    const done = {
-      id: data.id,
-      created: data.created,
-      model: data.model,
-      choices: [
-        {
-          index: 0,
-          delta: {},
-          finish_reason: finish,
-        },
-      ],
-      usage: body.usage,
-    }
-    const out = `data: ${JSON.stringify(data)}\n\ndata: ${JSON.stringify(done)}\n\ndata: [DONE]\n\n`
-    return new Response(out, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: {
-        "content-type": "text/event-stream; charset=utf-8",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-      },
-    })
-  }
-
-  export function resolveNpm(providerID: string, npm: string) {
-    if (!Flag.OPENCODE_EXPERIMENTAL_TRAVEL_SPECIAL) return npm
-    if (providerID !== travel) return npm
-    if (npm === copilot) return openaiCompatible
-    return npm
-  }
-
-  export function travelTrace() {
-    return lastTravel
   }
 
   export function protocolTrace(input: { sessionID?: string; limit?: number }) {
@@ -1581,7 +1257,6 @@ export namespace Provider {
             provider.key = modelPolicy.apiKey
           }
         }
-        if (providerID === travel) model.api.npm = openaiCompatible
         if (
           modelID === "gpt-5-chat-latest" ||
           (providerID === ProviderID.openrouter && modelID === "openai/gpt-5-chat")
@@ -1637,8 +1312,7 @@ export namespace Provider {
       const s = await state()
       const provider = s.providers[model.providerID]
       const options = { ...provider.options }
-      const npm = resolveNpm(model.providerID, model.api.npm)
-      const isTravel = model.providerID === travel
+      const npm = model.api.npm
 
       if (model.providerID === "google-vertex" && !npm.includes(openaiCompatible)) {
         delete options.fetch
@@ -1705,9 +1379,6 @@ export namespace Provider {
 
         const url = resolveURL(input)
         const path = pathFromURL(url)
-        const travelSpecial =
-          Flag.OPENCODE_EXPERIMENTAL_TRAVEL_SPECIAL && isTravel && url && isChatPath(url) && opts.method === "POST"
-        const travelStream = travelSpecial && isStreamBody(opts.body)
         const useTrace =
           Flag.OPENCODE_EXPERIMENTAL_PROTOCOL_TRACE && npm.includes(openaiCompatible) && opts.method === "POST"
         const id = useTrace ? traceID() : ""
@@ -1720,33 +1391,6 @@ export namespace Provider {
             sessionID: sessionFrom({ headers: opts.headers, body: opts.body }),
           })
         }
-        if (travelSpecial) {
-          const body = normalizeTravelBody(opts.body)
-          if (body) {
-            opts.body = JSON.stringify(body)
-            const headers = new Headers(opts.headers)
-            if (!headers.has("content-type")) headers.set("content-type", "application/json")
-            opts.headers = headers
-            lastTravel = {
-              at: new Date().toISOString(),
-              providerID: model.providerID,
-              modelID: model.id,
-              url,
-              rewritten: true,
-              payload: summarizeTravelBody(body),
-            }
-          } else {
-            lastTravel = {
-              at: new Date().toISOString(),
-              providerID: model.providerID,
-              modelID: model.id,
-              url,
-              rewritten: false,
-              reason: "invalid_body",
-            }
-          }
-        }
-
         // Strip openai itemId metadata following what codex does
         // Codex uses #[serde(skip_serializing)] on id fields for all item types:
         // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
@@ -1788,9 +1432,7 @@ export namespace Provider {
           }
         }
 
-        const sse = travelStream ? await travelJSONToSSE(res) : undefined
-        const next = sse ?? res
-        const traced = useTrace ? wrapTrace(next, id) : next
+        const traced = useTrace ? wrapTrace(res, id) : res
         if (!chunkAbortCtl) return traced
         return wrapSSE(traced, chunkTimeout, chunkAbortCtl)
       }

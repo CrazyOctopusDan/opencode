@@ -58,7 +58,6 @@ export const ProviderRoutes = lazy(() =>
           },
           tempo: TempoApi.trace(),
         }
-        const debugTravel = Provider.travelTrace()
         if (policy.enabled) {
           const providers = await Provider.list()
           return c.json({
@@ -66,7 +65,6 @@ export const ProviderRoutes = lazy(() =>
             default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
             connected: Object.keys(providers),
             debug_tempo: debugTempo,
-            debug_travel: debugTravel,
             debug_protocol: Provider.protocolTrace({ limit: 12 }),
           })
         }
@@ -92,7 +90,6 @@ export const ProviderRoutes = lazy(() =>
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
           connected: Object.keys(connected),
           debug_tempo: debugTempo,
-          debug_travel: debugTravel,
           debug_protocol: Provider.protocolTrace({ limit: 12 }),
         })
       },
@@ -160,7 +157,6 @@ export const ProviderRoutes = lazy(() =>
             providerIDs: policy.list.map((item) => item.id),
           },
           tempo: TempoApi.trace(),
-          travel: Provider.travelTrace(),
         })
       },
     )

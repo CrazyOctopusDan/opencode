@@ -84,19 +84,6 @@ type TraceRow = {
 const emptyMessages: MessageType[] = []
 const idle = { type: "idle" as const }
 const fmt = (at?: number) => (typeof at === "number" ? new Date(at).toLocaleTimeString() : "n/a")
-const flowKey = "opencode:pseudo-flow"
-const flowRead = () => {
-  if (typeof localStorage === "undefined") return false
-  return localStorage.getItem(flowKey) === "1"
-}
-const flowWrite = (on: boolean) => {
-  if (typeof localStorage === "undefined") return
-  if (on) {
-    localStorage.setItem(flowKey, "1")
-    return
-  }
-  localStorage.removeItem(flowKey)
-}
 const clip = (text: string) => text.replace(/\s+/g, " ").trim()
 
 const parseTrace = (value: unknown): TraceRow[] => {
@@ -398,10 +385,7 @@ export function MessageTimeline(props: {
   const row = createMemo(() => SessionDiagnostic.data[sdk.directory])
   const globalRow = createMemo(() => SessionDiagnostic.data["global"])
   const streamDebug = createMemo(() => SessionDiagnostic.debugOn())
-  const [diag, setDiag] = createStore({
-    flow: flowRead(),
-  })
-  const showDiag = createMemo(() => !!sessionID())
+  const showDiag = createMemo(() => !!sessionID() && settings.general.diagnosticPanel())
   const [trace, setTrace] = createStore({
     open: true,
     rows: [] as TraceRow[],
@@ -464,84 +448,6 @@ export function MessageTimeline(props: {
     if (!last?.parentID) return "n/a"
     const found = sessionMessages().some((item) => item.role === "user" && item.id === last.parentID)
     return found ? "yes" : "no"
-  })
-
-  createEffect(() => {
-    if (!diag.flow) return
-    const id = sessionID()
-    if (!id) return
-    const dead = (globalRow()?.event.total ?? 0) === 0
-    const busy = sessionStatus().type !== "idle"
-    if (!dead || !busy) return
-
-    let stop = false
-    let t: ReturnType<typeof setTimeout> | undefined
-    let size = 0
-    let statusAt = 0
-    const run = async () => {
-      if (stop) return
-      const deadNow = untrack(() => (globalRow()?.event.total ?? 0) === 0)
-      const pollMs = deadNow ? 250 : 1200
-      if (streamDebug()) {
-        SessionDiagnostic.trace({
-          dir: sdk.directory,
-          kind: "fallback_poll",
-          reason: deadNow ? "global_event_silent_fast" : "normal",
-          sessionID: id,
-        })
-      }
-      const now = Date.now()
-      if (now - statusAt >= 1000) {
-        statusAt = now
-        await sdk.client.session
-          .status()
-          .then((x) => {
-            const next = x.data?.[id]
-            if (!next) return
-            sync.set("session_status", id, next)
-          })
-          .catch(() => {})
-      }
-      await sync.session.sync(id, { force: true }).catch(() => {})
-      const snap = untrack(() => {
-        const list = sync.data.message[id] ?? []
-        const msg = list.findLast((item): item is AssistantMessage => item.role === "assistant")
-        if (!msg) return
-        const parts = sync.data.part[msg.id] ?? []
-        const text = parts
-          .filter((part): part is TextPart => part.type === "text")
-          .map((part) => part.text)
-          .join("")
-        return {
-          messageID: msg.id,
-          textLen: text.length,
-        }
-      })
-      if (snap && snap.textLen !== size) {
-        if (streamDebug()) {
-          SessionDiagnostic.trace({
-            dir: sdk.directory,
-            kind: "poll_text_size",
-            reason: "global_event_silent",
-            sessionID: id,
-            messageID: snap.messageID,
-            deltaLen: snap.textLen - size,
-          })
-        }
-        size = snap.textLen
-      }
-      if (stop) return
-      t = setTimeout(run, pollMs)
-    }
-
-    // Legacy fallback idea (for quick rollback):
-    // only poll session.status and skip session.sync
-    // That updates "busy/idle" but cannot fetch new part text.
-    void run()
-    onCleanup(() => {
-      stop = true
-      if (t) clearTimeout(t)
-    })
   })
 
   createEffect(() => {
@@ -1182,16 +1088,6 @@ export function MessageTimeline(props: {
                     <div class="flex items-center justify-between">
                       <div class="text-text-strong">diag</div>
                       <div class="flex items-center gap-1.5">
-                        <button
-                          class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
-                          onClick={() => {
-                            const next = !diag.flow
-                            setDiag("flow", next)
-                            flowWrite(next)
-                          }}
-                        >
-                          flow {diag.flow ? "on" : "off"}
-                        </button>
                         <button
                           class="rounded border border-border-weak-base px-1.5 py-0.5 text-[10px] text-text-weak hover:text-text-strong"
                           onClick={() => {

@@ -479,6 +479,26 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
+  const DesktopSection = () => (
+    <div class="flex flex-col gap-1">
+      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.section.desktop")}</h3>
+
+      <SettingsList>
+        <SettingsRow
+          title={language.t("settings.general.row.diagnosticPanel.title")}
+          description={language.t("settings.general.row.diagnosticPanel.description")}
+        >
+          <div data-action="settings-diagnostic-panel">
+            <Switch
+              checked={settings.general.diagnosticPanel()}
+              onChange={(checked) => settings.general.setDiagnosticPanel(checked)}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsList>
+    </div>
+  )
+
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
@@ -560,6 +580,10 @@ export const SettingsGeneral: Component = () => {
               </div>
             )
           }}
+        </Show>
+
+        <Show when={platform.platform === "desktop"}>
+          <DesktopSection />
         </Show>
       </div>
     </div>
