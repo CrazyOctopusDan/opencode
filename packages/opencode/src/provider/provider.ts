@@ -1782,7 +1782,7 @@ export namespace Provider {
             const sample = await res
               .clone()
               .text()
-              .then((text) => text.slice(0, 400))
+              .then((text: string) => text.slice(0, 400))
               .catch(() => "")
             if (sample) ProtocolTraceStore.frame(id, sample)
           }
