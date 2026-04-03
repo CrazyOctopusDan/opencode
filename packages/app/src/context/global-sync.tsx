@@ -36,7 +36,6 @@ import type { ProjectMeta } from "./global-sync/types"
 import { SESSION_RECENT_LIMIT } from "./global-sync/types"
 import { sanitizeProject } from "./global-sync/utils"
 import { formatServerError } from "@/utils/server-errors"
-import { SessionDiagnostic } from "./session-diagnostic"
 
 type GlobalStore = {
   ready: boolean
@@ -276,23 +275,6 @@ function createGlobalSync() {
     return promise
   }
 
-  const norm = (input: string) => {
-    let value = input.replace(/\\/g, "/").replace(/\/+$/, "")
-    if (/^[A-Za-z]:\//.test(value)) value = `/${value}`
-    return value.toLowerCase()
-  }
-
-  const match = (input: string) => {
-    if (children.children[input]) return input
-    const target = norm(input)
-    for (const key of Object.keys(children.children)) {
-      if (norm(key) !== target) continue
-      return key
-    }
-    const keys = Object.keys(children.children)
-    if (keys.length === 1) return keys[0]
-  }
-
   const unsub = globalSDK.event.listen((e) => {
     const directory = e.name
     const event = e.details
@@ -312,25 +294,20 @@ function createGlobalSync() {
       return
     }
 
-    const key = match(directory)
-    if (!key) {
-      SessionDiagnostic.miss(directory)
-      return
-    }
-    const existing = children.children[key]
+    const existing = children.children[directory]
     if (!existing) return
-    children.mark(key)
+    children.mark(directory)
     const [store, setStore] = existing
     applyDirectoryEvent({
       event,
-      directory: key,
+      directory,
       store,
       setStore,
       push: queue.push,
       setSessionTodo,
-      vcsCache: children.vcsCache.get(key),
+      vcsCache: children.vcsCache.get(directory),
       loadLsp: () => {
-        sdkFor(key)
+        sdkFor(directory)
           .lsp.status()
           .then((x) => setStore("lsp", x.data ?? []))
       },

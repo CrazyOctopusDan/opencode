@@ -23,24 +23,26 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const auth = useAuth()
     const abort = new AbortController()
 
-    const currentServer = server.current
-    if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
-    const canPlatform = (() => {
-      if (!platform.fetch) return false
+    const eventFetch = (() => {
+      if (!platform.fetch || !server.current) return
       try {
-        const url = new URL(currentServer.http.url)
+        const url = new URL(server.current.http.url)
         const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
-        return !loopback
+        if (url.protocol === "http:" && !loopback) return platform.fetch
       } catch {
-        return false
+        return
       }
     })()
-    // Prefer webview fetch for SSE first. In some desktop network stacks,
-    // platform.fetch may buffer SSE chunks and flush late.
-    let preferPlatform = false
-    // Legacy behavior (for quick rollback):
-    // let preferPlatform = canPlatform
 
+    const currentServer = server.current
+    if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
+
+    const eventSdk = createSdkForServer({
+      signal: abort.signal,
+      fetch: eventFetch,
+      server: currentServer.http,
+      token: auth.token(),
+    })
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
@@ -53,9 +55,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let queue: Queued[] = []
     let buffer: Queued[] = []
     const coalesced = new Map<string, number>()
-    // Legacy logic (for quick rollback): staleDeltas skips all delta for a part
-    // once an updated event is seen in the same flush window.
-    // const staleDeltas = new Set<string>()
+    const staleDeltas = new Set<string>()
     let timer: ReturnType<typeof setTimeout> | undefined
     let last = 0
 
@@ -77,31 +77,19 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (queue.length === 0) return
 
       const events = queue
-      // Legacy logic (for quick rollback):
-      // const skip = staleDeltas.size > 0 ? new Set(staleDeltas) : undefined
-      const cut = new Map<string, number>()
-      for (let i = 0; i < events.length; i++) {
-        const event = events[i]
-        if (event.payload.type !== "message.part.updated") continue
-        const part = event.payload.properties.part
-        cut.set(deltaKey(event.directory, part.messageID, part.id), i)
-      }
+      const skip = staleDeltas.size > 0 ? new Set(staleDeltas) : undefined
       queue = buffer
       buffer = events
       queue.length = 0
       coalesced.clear()
-      // Legacy logic (for quick rollback):
-      // staleDeltas.clear()
+      staleDeltas.clear()
 
       last = Date.now()
       batch(() => {
-        for (let i = 0; i < events.length; i++) {
-          const event = events[i]
-          if (event.payload.type === "message.part.delta") {
+        for (const event of events) {
+          if (skip && event.payload.type === "message.part.delta") {
             const props = event.payload.properties
-            const k = deltaKey(event.directory, props.messageID, props.partID)
-            const at = cut.get(k)
-            if (at !== undefined && i < at) {
+            if (skip.has(deltaKey(event.directory, props.messageID, props.partID))) {
               SessionDiagnostic.trace({
                 dir: event.directory,
                 kind: "skip_stale_delta",
@@ -160,7 +148,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     void (async () => {
       while (!abort.signal.aborted) {
-        const eventFetch = canPlatform && preferPlatform ? platform.fetch : undefined
         if (SessionDiagnostic.debugOn()) {
           SessionDiagnostic.trace({
             dir: "global",
@@ -168,15 +155,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             reason: eventFetch ? "platform" : "webview",
           })
         }
-        const eventSdk = createSdkForServer({
-          signal: abort.signal,
-          fetch: eventFetch,
-          server: currentServer.http,
-          token: auth.token(),
-        })
         attempt = new AbortController()
         lastEventAt = Date.now()
-        let seen = false
         const onAbort = () => {
           attempt?.abort()
         }
@@ -198,7 +178,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           let yielded = Date.now()
           resetHeartbeat()
           for await (const event of events.stream) {
-            seen = true
             resetHeartbeat()
             streamErrorLogged = false
             const directory = event.directory ?? "global"
@@ -209,20 +188,18 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               if (i !== undefined) {
                 queue[i] = { directory, payload }
                 SessionDiagnostic.coalesce(directory)
-                if (payload.type === "message.part.updated" && SessionDiagnostic.debugOn()) {
+                if (payload.type === "message.part.updated") {
                   const part = payload.properties.part
-                  SessionDiagnostic.trace({
-                    dir: directory,
-                    kind: "coalesce_updated",
-                    sessionID: part.sessionID,
-                    messageID: part.messageID,
-                    partID: part.id,
-                  })
-                  SessionDiagnostic.debugOut("coalesce_updated", {
-                    dir: directory,
-                    messageID: part.messageID,
-                    partID: part.id,
-                  })
+                  staleDeltas.add(deltaKey(directory, part.messageID, part.id))
+                  if (SessionDiagnostic.debugOn()) {
+                    SessionDiagnostic.trace({
+                      dir: directory,
+                      kind: "coalesce_updated",
+                      sessionID: part.sessionID,
+                      messageID: part.messageID,
+                      partID: part.id,
+                    })
+                  }
                 }
                 continue
               }
@@ -240,14 +217,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
                 field: props.field,
                 deltaLen: props.delta.length,
               })
-              SessionDiagnostic.debugOut("recv_delta", {
-                dir: directory,
-                sessionID: props.sessionID,
-                messageID: props.messageID,
-                partID: props.partID,
-                field: props.field,
-                deltaLen: props.delta.length,
-              })
             }
             if (SessionDiagnostic.debugOn() && payload.type === "message.part.updated") {
               const part = payload.properties.part
@@ -257,15 +226,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
                 sessionID: part.sessionID,
                 messageID: part.messageID,
                 partID: part.id,
-              })
-              SessionDiagnostic.debugOut("recv_updated", {
-                dir: directory,
-                sessionID: part.sessionID,
-                messageID: part.messageID,
-                partID: part.id,
-                type: part.type,
-                hasEnd: "time" in part && part.time && "end" in part.time ? !!part.time.end : undefined,
-                textLen: part.type === "text" ? part.text.length : undefined,
               })
             }
             SessionDiagnostic.event({ dir: directory, evt: payload })
@@ -298,16 +258,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
 
         if (abort.signal.aborted) return
-        if (canPlatform && !seen) {
-          if (SessionDiagnostic.debugOn()) {
-            SessionDiagnostic.trace({
-              dir: "global",
-              kind: "event_fetch_switch",
-              reason: preferPlatform ? "platform_to_webview" : "webview_to_platform",
-            })
-          }
-          preferPlatform = !preferPlatform
-        }
         await wait(RECONNECT_DELAY_MS)
       }
     })().finally(flush)
