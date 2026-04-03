@@ -145,17 +145,27 @@ export namespace Provider {
     return Number(match[1]) >= 5 && !modelID.startsWith("gpt-5-mini")
   }
 
-  function wrapSSE(res: Response, ms: number, ctl: AbortController) {
+  function wrapSSE(res: Response, ms: number, ctl: AbortController, traceID?: string) {
     if (typeof ms !== "number" || ms <= 0) return res
     if (!res.body) return res
     if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
 
     const reader = res.body.getReader()
+    let done = false
+    const mark = (code: string, note?: string) => {
+      if (!traceID) return
+      ProtocolTraceStore.code(traceID, code)
+      if (note) ProtocolTraceStore.frame(traceID, note)
+      if (done) return
+      done = true
+      ProtocolTraceStore.done(traceID)
+    }
     const body = new ReadableStream<Uint8Array>({
       async pull(ctrl) {
         const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
           const id = setTimeout(() => {
             const err = new Error("SSE read timed out")
+            mark("sse_chunk_timeout", err.message)
             ctl.abort(err)
             void reader.cancel(err)
             reject(err)
@@ -168,6 +178,7 @@ export namespace Provider {
             },
             (err) => {
               clearTimeout(id)
+              mark("sse_read_error", err instanceof Error ? err.message : String(err))
               reject(err)
             },
           )
@@ -1434,7 +1445,7 @@ export namespace Provider {
 
         const traced = useTrace ? wrapTrace(res, id) : res
         if (!chunkAbortCtl) return traced
-        return wrapSSE(traced, chunkTimeout, chunkAbortCtl)
+        return wrapSSE(traced, chunkTimeout, chunkAbortCtl, useTrace ? id : undefined)
       }
 
       const bundledFn = BUNDLED_PROVIDERS[npm]

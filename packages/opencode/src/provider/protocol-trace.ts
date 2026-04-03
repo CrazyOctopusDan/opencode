@@ -99,6 +99,28 @@ const addCode = (row: ProtocolTrace, code: string) => {
 const resolveJudge = (row: ProtocolTrace) => {
   const hasTool = row.parsed.hit.tool_call || row.parsed.tool > 0
   const [finish] = Object.entries(row.parsed.finish).sort((a, b) => b[1] - a[1])[0] ?? []
+  if ((row.parsed.code["sse_chunk_timeout"] ?? 0) > 0) {
+    row.judge = {
+      level: "error",
+      code: "sse_chunk_timeout",
+      note: "stream stalled between SSE chunks",
+      tip: "increase or disable provider chunkTimeout",
+      finish,
+      tool: hasTool,
+    }
+    return
+  }
+  if ((row.parsed.code["sse_read_error"] ?? 0) > 0) {
+    row.judge = {
+      level: "error",
+      code: "sse_read_error",
+      note: "stream read failed",
+      tip: "check network stability and upstream stream health",
+      finish,
+      tool: hasTool,
+    }
+    return
+  }
   if (hasTool) {
     row.judge = {
       level: "ok",
@@ -226,4 +248,3 @@ export namespace ProtocolTraceStore {
       .reverse()
   }
 }
-
