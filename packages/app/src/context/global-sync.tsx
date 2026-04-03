@@ -339,6 +339,17 @@ function createGlobalSync() {
   }
 
   onMount(() => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          void globalSDK.event.start()
+        }, 0)
+      })
+    } else {
+      setTimeout(() => {
+        void globalSDK.event.start()
+      }, 0)
+    }
     void bootstrap()
   })
 
