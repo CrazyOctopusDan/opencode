@@ -9,15 +9,9 @@ import { ProviderID } from "../../provider/schema"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
-import { ModelPolicy } from "../../provider/model-policy"
-import { TempoApi } from "../tempo-api"
+import { Log } from "../../util/log"
 
-function localToken(header: string | undefined) {
-  if (!header?.startsWith("Bearer ")) return
-  const token = header.slice("Bearer ".length).trim()
-  if (!token) return
-  return token
-}
+const log = Log.create({ service: "server" })
 
 export const ProviderRoutes = lazy(() =>
   new Hono()
@@ -37,7 +31,6 @@ export const ProviderRoutes = lazy(() =>
                     all: ModelsDev.Provider.array(),
                     default: z.record(z.string(), z.string()),
                     connected: z.array(z.string()),
-                    debug_protocol: z.any().optional(),
                   }),
                 ),
               },
@@ -46,28 +39,6 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const token = localToken(c.req.header("authorization"))
-        const policy = await ModelPolicy.snapshot(true, token)
-        const debugTempo = {
-          policy: {
-            enabled: policy.enabled,
-            locked: policy.locked,
-            providers: policy.list.length,
-            models: policy.list.reduce((acc, item) => acc + item.models.length, 0),
-            providerIDs: policy.list.map((item) => item.id),
-          },
-          tempo: TempoApi.trace(),
-        }
-        if (policy.enabled) {
-          const providers = await Provider.list()
-          return c.json({
-            all: Object.values(providers),
-            default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
-            connected: Object.keys(providers),
-            debug_tempo: debugTempo,
-            debug_protocol: Provider.protocolTrace({ limit: 12 }),
-          })
-        }
         const config = await Config.get()
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
@@ -89,74 +60,6 @@ export const ProviderRoutes = lazy(() =>
           all: Object.values(providers),
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
           connected: Object.keys(connected),
-          debug_tempo: debugTempo,
-          debug_protocol: Provider.protocolTrace({ limit: 12 }),
-        })
-      },
-    )
-    .get(
-      "/debug/protocol",
-      describeRoute({
-        summary: "Get openai-compatible protocol trace",
-        description: "Return recent protocol traces for OpenAI-compatible requests.",
-        operationId: "provider.debug.protocol",
-        responses: {
-          200: {
-            description: "Protocol debug payload",
-            content: {
-              "application/json": {
-                schema: resolver(z.any()),
-              },
-            },
-          },
-        },
-      }),
-      validator(
-        "query",
-        z.object({
-          sessionID: z.string().optional(),
-          limit: z.coerce.number().int().positive().max(50).optional(),
-        }),
-      ),
-      async (c) => {
-        const query = c.req.valid("query")
-        return c.json({
-          items: Provider.protocolTrace({
-            sessionID: query.sessionID,
-            limit: query.limit ?? 20,
-          }),
-        })
-      },
-    )
-    .get(
-      "/debug/tempo",
-      describeRoute({
-        summary: "Get tempo debug trace",
-        description: "Return last upstream tempo API trace and current policy snapshot.",
-        operationId: "provider.debug.tempo",
-        responses: {
-          200: {
-            description: "Tempo debug payload",
-            content: {
-              "application/json": {
-                schema: resolver(z.any()),
-              },
-            },
-          },
-        },
-      }),
-      async (c) => {
-        const token = localToken(c.req.header("authorization"))
-        const policy = await ModelPolicy.snapshot(false, token)
-        return c.json({
-          policy: {
-            enabled: policy.enabled,
-            locked: policy.locked,
-            providers: policy.list.length,
-            models: policy.list.reduce((acc, item) => acc + item.models.length, 0),
-            providerIDs: policy.list.map((item) => item.id),
-          },
-          tempo: TempoApi.trace(),
         })
       },
     )

@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { Effect } from "effect"
+import { afterEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { pathToFileURL } from "url"
-import type { PermissionNext } from "../../src/permission"
+import type { Permission } from "../../src/permission"
 import type { Tool } from "../../src/tool/tool"
 import { Instance } from "../../src/project/instance"
-import { SkillTool } from "../../src/tool/skill"
+import { SkillTool, SkillDescription } from "../../src/tool/skill"
 import { tmpdir } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
 
@@ -17,6 +18,10 @@ const baseCtx: Omit<Tool.Context, "ask"> = {
   messages: [],
   metadata: () => {},
 }
+
+afterEach(async () => {
+  await Instance.disposeAll()
+})
 
 describe("tool.skill", () => {
   test("description lists skill location URL", async () => {
@@ -44,9 +49,10 @@ description: Skill for tool tests.
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const tool = await SkillTool.init()
-          const skillPath = path.join(tmp.path, ".opencode", "skill", "tool-skill", "SKILL.md")
-          expect(tool.description).toContain(`**tool-skill**: Skill for tool tests.`)
+          const desc = await Effect.runPromise(
+            SkillDescription({ name: "build", mode: "primary" as const, permission: [], options: {} }),
+          )
+          expect(desc).toContain(`**tool-skill**: Skill for tool tests.`)
         },
       })
     } finally {
@@ -85,14 +91,15 @@ description: ${description}
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const first = await SkillTool.init()
-          const second = await SkillTool.init()
+          const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
+          const first = await Effect.runPromise(SkillDescription(agent))
+          const second = await Effect.runPromise(SkillDescription(agent))
 
-          expect(first.description).toBe(second.description)
+          expect(first).toBe(second)
 
-          const alpha = first.description.indexOf("**alpha-skill**: Alpha skill.")
-          const middle = first.description.indexOf("**middle-skill**: Middle skill.")
-          const zeta = first.description.indexOf("**zeta-skill**: Zeta skill.")
+          const alpha = first.indexOf("**alpha-skill**: Alpha skill.")
+          const middle = first.indexOf("**middle-skill**: Middle skill.")
+          const zeta = first.indexOf("**zeta-skill**: Zeta skill.")
 
           expect(alpha).toBeGreaterThan(-1)
           expect(middle).toBeGreaterThan(alpha)
@@ -133,7 +140,7 @@ Use this skill.
         directory: tmp.path,
         fn: async () => {
           const tool = await SkillTool.init()
-          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const requests: Array<Omit<Permission.Request, "id" | "sessionID" | "tool">> = []
           const ctx: Tool.Context = {
             ...baseCtx,
             ask: async (req) => {

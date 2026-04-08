@@ -1,12 +1,12 @@
 import {
   APICallError,
   InvalidResponseDataError,
-  type LanguageModelV2,
-  type LanguageModelV2CallWarning,
-  type LanguageModelV2Content,
-  type LanguageModelV2FinishReason,
-  type LanguageModelV2StreamPart,
-  type SharedV2ProviderMetadata,
+  type LanguageModelV3,
+  type LanguageModelV3CallOptions,
+  type LanguageModelV3Content,
+  type LanguageModelV3StreamPart,
+  type SharedV3ProviderMetadata,
+  type SharedV3Warning,
 } from "@ai-sdk/provider"
 import {
   combineHeaders,
@@ -29,8 +29,6 @@ import { type OpenAICompatibleChatModelId, openaiCompatibleProviderOptions } fro
 import { defaultOpenAICompatibleErrorStructure, type ProviderErrorStructure } from "../openai-compatible-error"
 import type { MetadataExtractor } from "./openai-compatible-metadata-extractor"
 import { prepareTools } from "./openai-compatible-prepare-tools"
-import { ProtocolTraceStore } from "@/provider/protocol-trace"
-import { Flag } from "@/flag/flag"
 
 export type OpenAICompatibleChatConfig = {
   provider: string
@@ -49,11 +47,11 @@ export type OpenAICompatibleChatConfig = {
   /**
    * The supported URLs for the model.
    */
-  supportedUrls?: () => LanguageModelV2["supportedUrls"]
+  supportedUrls?: () => LanguageModelV3["supportedUrls"]
 }
 
-export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
-  readonly specificationVersion = "v2"
+export class OpenAICompatibleChatLanguageModel implements LanguageModelV3 {
+  readonly specificationVersion = "v3"
 
   readonly supportsStructuredOutputs: boolean
 
@@ -100,8 +98,8 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     seed,
     toolChoice,
     tools,
-  }: Parameters<LanguageModelV2["doGenerate"]>[0]) {
-    const warnings: LanguageModelV2CallWarning[] = []
+  }: LanguageModelV3CallOptions) {
+    const warnings: SharedV3Warning[] = []
 
     // Parse provider options
     const compatibleOptions = Object.assign(
@@ -118,13 +116,13 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     )
 
     if (topK != null) {
-      warnings.push({ type: "unsupported-setting", setting: "topK" })
+      warnings.push({ type: "unsupported", feature: "topK" })
     }
 
     if (responseFormat?.type === "json" && responseFormat.schema != null && !this.supportsStructuredOutputs) {
       warnings.push({
-        type: "unsupported-setting",
-        setting: "responseFormat",
+        type: "unsupported",
+        feature: "responseFormat",
         details: "JSON response format schema is only supported with structuredOutputs",
       })
     }
@@ -191,9 +189,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     }
   }
 
-  async doGenerate(
-    options: Parameters<LanguageModelV2["doGenerate"]>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2["doGenerate"]>>> {
+  async doGenerate(options: LanguageModelV3CallOptions) {
     const { args, warnings } = await this.getArgs({ ...options })
 
     const body = JSON.stringify(args)
@@ -216,7 +212,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     })
 
     const choice = responseBody.choices[0]
-    const content: Array<LanguageModelV2Content> = []
+    const content: Array<LanguageModelV3Content> = []
 
     // text content:
     const text = choice.message.content
@@ -259,7 +255,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     }
 
     // provider metadata:
-    const providerMetadata: SharedV2ProviderMetadata = {
+    const providerMetadata: SharedV3ProviderMetadata = {
       [this.providerOptionsName]: {},
       ...(await this.config.metadataExtractor?.extractMetadata?.({
         parsedBody: rawResponse,
@@ -277,13 +273,23 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
 
     return {
       content,
-      finishReason: mapOpenAICompatibleFinishReason(choice.finish_reason),
+      finishReason: {
+        unified: mapOpenAICompatibleFinishReason(choice.finish_reason),
+        raw: choice.finish_reason ?? undefined,
+      },
       usage: {
-        inputTokens: responseBody.usage?.prompt_tokens ?? undefined,
-        outputTokens: responseBody.usage?.completion_tokens ?? undefined,
-        totalTokens: responseBody.usage?.total_tokens ?? undefined,
-        reasoningTokens: responseBody.usage?.completion_tokens_details?.reasoning_tokens ?? undefined,
-        cachedInputTokens: responseBody.usage?.prompt_tokens_details?.cached_tokens ?? undefined,
+        inputTokens: {
+          total: responseBody.usage?.prompt_tokens ?? undefined,
+          noCache: undefined,
+          cacheRead: responseBody.usage?.prompt_tokens_details?.cached_tokens ?? undefined,
+          cacheWrite: undefined,
+        },
+        outputTokens: {
+          total: responseBody.usage?.completion_tokens ?? undefined,
+          text: undefined,
+          reasoning: responseBody.usage?.completion_tokens_details?.reasoning_tokens ?? undefined,
+        },
+        raw: responseBody.usage ?? undefined,
       },
       providerMetadata,
       request: { body },
@@ -296,9 +302,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
     }
   }
 
-  async doStream(
-    options: Parameters<LanguageModelV2["doStream"]>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2["doStream"]>>> {
+  async doStream(options: LanguageModelV3CallOptions) {
     const { args, warnings } = await this.getArgs({ ...options })
 
     const body = {
@@ -323,17 +327,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
       abortSignal: options.abortSignal,
       fetch: this.config.fetch,
     })
-    const traceID = (() => {
-      if (!Flag.OPENCODE_EXPERIMENTAL_PROTOCOL_TRACE) return ""
-      if (responseHeaders instanceof Headers) return responseHeaders.get("x-opencode-trace-id") ?? ""
-      if (responseHeaders && typeof responseHeaders === "object") {
-        const row = responseHeaders as Record<string, string | string[] | undefined>
-        const val = row["x-opencode-trace-id"] ?? row["X-OpenCode-Trace-Id"]
-        if (typeof val === "string") return val
-        if (Array.isArray(val)) return val[0] ?? ""
-      }
-      return ""
-    })()
 
     const toolCalls: Array<{
       id: string
@@ -345,7 +338,13 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
       hasFinished: boolean
     }> = []
 
-    let finishReason: LanguageModelV2FinishReason = "unknown"
+    let finishReason: {
+      unified: ReturnType<typeof mapOpenAICompatibleFinishReason>
+      raw: string | undefined
+    } = {
+      unified: "other",
+      raw: undefined,
+    }
     const usage: {
       completionTokens: number | undefined
       completionTokensDetails: {
@@ -379,7 +378,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
 
     return {
       stream: response.pipeThrough(
-        new TransformStream<ParseResult<z.infer<typeof this.chunkSchema>>, LanguageModelV2StreamPart>({
+        new TransformStream<ParseResult<z.infer<typeof this.chunkSchema>>, LanguageModelV3StreamPart>({
           start(controller) {
             controller.enqueue({ type: "stream-start", warnings })
           },
@@ -393,23 +392,23 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
 
             // handle failed chunk parsing / validation:
             if (!chunk.success) {
-              if (traceID) {
-                ProtocolTraceStore.chunk(traceID, { ok: false })
-                ProtocolTraceStore.code(traceID, "invalid_chunk")
+              finishReason = {
+                unified: "error",
+                raw: undefined,
               }
-              finishReason = "error"
               controller.enqueue({ type: "error", error: chunk.error })
               return
             }
             const value = chunk.value
-            if (traceID) ProtocolTraceStore.chunk(traceID, { ok: true })
 
             metadataExtractor?.processChunk(chunk.rawValue)
 
             // handle error chunks:
             if ("error" in value) {
-              if (traceID) ProtocolTraceStore.code(traceID, "upstream_error_chunk")
-              finishReason = "error"
+              finishReason = {
+                unified: "error",
+                raw: undefined,
+              }
               controller.enqueue({ type: "error", error: value.error.message })
               return
             }
@@ -454,9 +453,9 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
             const choice = value.choices[0]
 
             if (choice?.finish_reason != null) {
-              finishReason = mapOpenAICompatibleFinishReason(choice.finish_reason)
-              if (traceID) {
-                ProtocolTraceStore.chunk(traceID, { ok: true, finish: String(finishReason) })
+              finishReason = {
+                unified: mapOpenAICompatibleFinishReason(choice.finish_reason),
+                raw: choice.finish_reason ?? undefined,
               }
             }
 
@@ -481,7 +480,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
             // enqueue reasoning before text deltas (Copilot uses reasoning_text):
             const reasoningContent = delta.reasoning_text
             if (reasoningContent) {
-              if (traceID) ProtocolTraceStore.hit(traceID, "reasoning")
               if (!isActiveReasoning) {
                 controller.enqueue({
                   type: "reasoning-start",
@@ -498,7 +496,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
             }
 
             if (delta.content) {
-              if (traceID) ProtocolTraceStore.chunk(traceID, { ok: true, hasText: true })
               // If reasoning was active and we're starting text, end reasoning first
               // This handles the case where reasoning_opaque and content come in the same chunk
               if (isActiveReasoning && !isActiveText) {
@@ -527,7 +524,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
             }
 
             if (delta.tool_calls != null) {
-              if (traceID) ProtocolTraceStore.code(traceID, "delta_tool_calls")
               // If reasoning was active and we're starting tool calls, end reasoning first
               // This handles the case where reasoning goes directly to tool calls with no content
               if (isActiveReasoning) {
@@ -561,7 +557,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                     id: toolCallDelta.id,
                     toolName: toolCallDelta.function.name,
                   })
-                  if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_start")
 
                   toolCalls[index] = {
                     id: toolCallDelta.id,
@@ -583,7 +578,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                         id: toolCall.id,
                         delta: toolCall.function.arguments,
                       })
-                      if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_delta")
                     }
 
                     // check if tool call is complete
@@ -593,7 +587,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                         type: "tool-input-end",
                         id: toolCall.id,
                       })
-                      if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_end")
 
                       controller.enqueue({
                         type: "tool-call",
@@ -602,13 +595,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                         input: toolCall.function.arguments,
                         providerMetadata: reasoningOpaque ? { copilot: { reasoningOpaque } } : undefined,
                       })
-                      if (traceID) {
-                        ProtocolTraceStore.hit(traceID, "tool_call")
-                        ProtocolTraceStore.chunk(traceID, { ok: true, hasTool: true })
-                      }
                       toolCall.hasFinished = true
-                    } else if (traceID) {
-                      ProtocolTraceStore.code(traceID, "invalid_tool_args_json")
                     }
                   }
 
@@ -632,7 +619,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                   id: toolCall.id,
                   delta: toolCallDelta.function.arguments ?? "",
                 })
-                if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_delta")
 
                 // check if tool call is complete
                 if (
@@ -644,7 +630,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                     type: "tool-input-end",
                     id: toolCall.id,
                   })
-                  if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_end")
 
                   controller.enqueue({
                     type: "tool-call",
@@ -653,10 +638,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                     input: toolCall.function.arguments,
                     providerMetadata: reasoningOpaque ? { copilot: { reasoningOpaque } } : undefined,
                   })
-                  if (traceID) {
-                    ProtocolTraceStore.hit(traceID, "tool_call")
-                    ProtocolTraceStore.chunk(traceID, { ok: true, hasTool: true })
-                  }
                   toolCall.hasFinished = true
                 }
               }
@@ -683,7 +664,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                 type: "tool-input-end",
                 id: toolCall.id,
               })
-              if (traceID) ProtocolTraceStore.hit(traceID, "tool_input_end")
 
               controller.enqueue({
                 type: "tool-call",
@@ -691,13 +671,9 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
                 toolName: toolCall.function.name,
                 input: toolCall.function.arguments,
               })
-              if (traceID) {
-                ProtocolTraceStore.hit(traceID, "tool_call")
-                ProtocolTraceStore.chunk(traceID, { ok: true, hasTool: true })
-              }
             }
 
-            const providerMetadata: SharedV2ProviderMetadata = {
+            const providerMetadata: SharedV3ProviderMetadata = {
               [providerOptionsName]: {},
               // Include reasoning_opaque for Copilot multi-turn reasoning
               ...(reasoningOpaque ? { copilot: { reasoningOpaque } } : {}),
@@ -716,19 +692,28 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV2 {
               type: "finish",
               finishReason,
               usage: {
-                inputTokens: usage.promptTokens ?? undefined,
-                outputTokens: usage.completionTokens ?? undefined,
-                totalTokens: usage.totalTokens ?? undefined,
-                reasoningTokens: usage.completionTokensDetails.reasoningTokens ?? undefined,
-                cachedInputTokens: usage.promptTokensDetails.cachedTokens ?? undefined,
+                inputTokens: {
+                  total: usage.promptTokens,
+                  noCache:
+                    usage.promptTokens != undefined && usage.promptTokensDetails.cachedTokens != undefined
+                      ? usage.promptTokens - usage.promptTokensDetails.cachedTokens
+                      : undefined,
+                  cacheRead: usage.promptTokensDetails.cachedTokens,
+                  cacheWrite: undefined,
+                },
+                outputTokens: {
+                  total: usage.completionTokens,
+                  text: undefined,
+                  reasoning: usage.completionTokensDetails.reasoningTokens,
+                },
+                raw: {
+                  prompt_tokens: usage.promptTokens ?? null,
+                  completion_tokens: usage.completionTokens ?? null,
+                  total_tokens: usage.totalTokens ?? null,
+                },
               },
               providerMetadata,
             })
-            if (traceID) {
-              if (finishReason === "unknown") ProtocolTraceStore.code(traceID, "unknown_finish")
-              if (!toolCalls.some((item) => item.hasFinished)) ProtocolTraceStore.code(traceID, "no_delta_tool_calls")
-              ProtocolTraceStore.done(traceID)
-            }
           },
         }),
       ),
