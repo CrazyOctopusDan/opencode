@@ -319,34 +319,36 @@ export function AppInterface(props: {
     >
       <ConnectionGate disableHealthCheck={props.disableHealthCheck}>
         <ServerKey>
-          <AuthProvider>
-            <Dynamic
-              component={props.router ?? Router}
-              root={(routerProps) => <RouterRootWithAuth appChildren={props.children}>{routerProps.children}</RouterRootWithAuth>}
+          <Dynamic
+            component={props.router ?? Router}
+            root={(routerProps) => (
+              <AuthProvider>
+                <RouterRootWithAuth appChildren={props.children}>{routerProps.children}</RouterRootWithAuth>
+              </AuthProvider>
+            )}
+          >
+            <Route path="/login" component={LoginRoute} />
+            <Route
+              path="/"
+              component={(routeProps) => (
+                <ProtectedApp>
+                  <HomeRoute />
+                  {routeProps.children}
+                </ProtectedApp>
+              )}
+            />
+            <Route
+              path="/:dir"
+              component={(routeProps) => (
+                <ProtectedApp>
+                  <DirectoryLayout>{routeProps.children}</DirectoryLayout>
+                </ProtectedApp>
+              )}
             >
-              <Route path="/login" component={LoginRoute} />
-              <Route
-                path="/"
-                component={(routeProps) => (
-                  <ProtectedApp>
-                    <HomeRoute />
-                    {routeProps.children}
-                  </ProtectedApp>
-                )}
-              />
-              <Route
-                path="/:dir"
-                component={(routeProps) => (
-                  <ProtectedApp>
-                    <DirectoryLayout>{routeProps.children}</DirectoryLayout>
-                  </ProtectedApp>
-                )}
-              >
-                <Route path="/" component={SessionIndexRoute} />
-                <Route path="/session/:id?" component={SessionRoute} />
-              </Route>
-            </Dynamic>
-          </AuthProvider>
+              <Route path="/" component={SessionIndexRoute} />
+              <Route path="/session/:id?" component={SessionRoute} />
+            </Route>
+          </Dynamic>
         </ServerKey>
       </ConnectionGate>
     </ServerProvider>
