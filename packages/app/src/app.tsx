@@ -28,7 +28,7 @@ import {
 import { Dynamic } from "solid-js/web"
 import { CommandProvider } from "@/context/command"
 import { CommentsProvider } from "@/context/comments"
-import { AuthProvider } from "@/context/auth"
+import { AuthProvider, useAuth } from "@/context/auth"
 import { FileProvider } from "@/context/file"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { GlobalSyncProvider } from "@/context/global-sync"
@@ -50,6 +50,7 @@ import { useCheckServerHealth } from "./utils/server-health"
 const HomeRoute = lazy(() => import("@/pages/home"))
 const loadSession = () => import("@/pages/session")
 const Session = lazy(loadSession)
+const LoginPage = lazy(() => import("@/pages/login"))
 const Loading = () => <div class="size-full" />
 
 if (typeof location === "object" && /\/session(?:\/|$)/.test(location.pathname)) {
@@ -63,6 +64,20 @@ const SessionRoute = () => (
 )
 
 const SessionIndexRoute = () => <Navigate href="session" />
+const LoginRoute = () => (
+  <Suspense fallback={<Loading />}>
+    <LoginPage />
+  </Suspense>
+)
+
+function Protected(props: ParentProps) {
+  const auth = useAuth()
+  return <Show when={auth.loggedIn()} fallback={<Navigate href="/login" />}>{props.children}</Show>
+}
+
+function ProtectedApp(props: ParentProps) {
+  return <Protected>{props.children}</Protected>
+}
 
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
@@ -127,6 +142,19 @@ function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
         {props.children}
       </Suspense>
     </AppShellProviders>
+  )
+}
+
+function RouterRootWithAuth(props: ParentProps<{ appChildren?: JSX.Element }>) {
+  const auth = useAuth()
+  return (
+    <Show when={auth.loggedIn()} fallback={<RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>}>
+      <GlobalSDKProvider>
+        <GlobalSyncProvider>
+          <RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>
+        </GlobalSyncProvider>
+      </GlobalSDKProvider>
+    </Show>
   )
 }
 
@@ -292,20 +320,32 @@ export function AppInterface(props: {
       <ConnectionGate disableHealthCheck={props.disableHealthCheck}>
         <ServerKey>
           <AuthProvider>
-            <GlobalSDKProvider>
-              <GlobalSyncProvider>
-                <Dynamic
-                  component={props.router ?? Router}
-                  root={(routerProps) => <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>}
-                >
-                  <Route path="/" component={HomeRoute} />
-                  <Route path="/:dir" component={DirectoryLayout}>
-                    <Route path="/" component={SessionIndexRoute} />
-                    <Route path="/session/:id?" component={SessionRoute} />
-                  </Route>
-                </Dynamic>
-              </GlobalSyncProvider>
-            </GlobalSDKProvider>
+            <Dynamic
+              component={props.router ?? Router}
+              root={(routerProps) => <RouterRootWithAuth appChildren={props.children}>{routerProps.children}</RouterRootWithAuth>}
+            >
+              <Route path="/login" component={LoginRoute} />
+              <Route
+                path="/"
+                component={(routeProps) => (
+                  <ProtectedApp>
+                    <HomeRoute />
+                    {routeProps.children}
+                  </ProtectedApp>
+                )}
+              />
+              <Route
+                path="/:dir"
+                component={(routeProps) => (
+                  <ProtectedApp>
+                    <DirectoryLayout>{routeProps.children}</DirectoryLayout>
+                  </ProtectedApp>
+                )}
+              >
+                <Route path="/" component={SessionIndexRoute} />
+                <Route path="/session/:id?" component={SessionRoute} />
+              </Route>
+            </Dynamic>
           </AuthProvider>
         </ServerKey>
       </ConnectionGate>

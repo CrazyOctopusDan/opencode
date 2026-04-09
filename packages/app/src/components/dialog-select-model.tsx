@@ -1,9 +1,11 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createMemo, JSX, Show, ValidComponent } from "solid-js"
+import { Component, ComponentProps, createMemo, createResource, JSX, Show, ValidComponent } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useNavigate } from "@solidjs/router"
 import { useLocal } from "@/context/local"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders } from "@/hooks/use-providers"
+import { useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -12,6 +14,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useAuth } from "@/context/auth"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -26,62 +29,100 @@ const ModelList: Component<{
   model?: ModelState
 }> = (props) => {
   const model = props.model ?? useLocal().model
+  const globalSDK = useGlobalSDK()
   const language = useLanguage()
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const [providerData] = createResource(async () => {
+    try {
+      const result = await globalSDK.client.provider.list()
+      const data = (result.data ?? { all: [], connected: [], default: {} }) as (typeof result.data & {
+        debug_tempo?: unknown
+      })
+      const connected = new Set(data.connected)
+      const models = data.all
+        .filter((provider) => connected.has(provider.id))
+        .flatMap((provider) =>
+          Object.values(provider.models).map((model) => ({
+            ...model,
+            provider,
+            name: model.name.replace("(latest)", "").trim(),
+            latest: model.name.includes("(latest)"),
+          })),
+        )
+      return {
+        ok: true as const,
+        models,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.toLowerCase().includes("unauthorized")) {
+        void auth.logout().then(() => navigate("/login"))
+      }
+      return {
+        ok: false as const,
+        models: [] as {
+          id: string
+          name: string
+          latest: boolean
+          provider: { id: string; name: string }
+        }[],
+      }
+    }
+  })
 
-  const models = createMemo(() =>
-    model
-      .list()
+  const models = createMemo(() => {
+    const list = providerData()
+    if (!list?.ok) return []
+    return list.models
       .filter((m) => model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
-  )
+      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
+  })
 
   return (
-    <List
-      class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
-      emptyMessage={language.t("dialog.model.empty")}
-      key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
-      current={model.current()}
-      filterKeys={["provider.name", "name", "id"]}
-      sortBy={(a, b) => a.name.localeCompare(b.name)}
-      groupBy={(x) => x.provider.name}
-      sortGroupsBy={(a, b) => {
-        const aProvider = a.items[0].provider.id
-        const bProvider = b.items[0].provider.id
-        if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-        if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-        return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
-      }}
-      itemWrapper={(item, node) => (
-        <Tooltip
-          class="w-full"
-          placement="right-start"
-          gutter={12}
-          value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
-        >
-          {node}
-        </Tooltip>
-      )}
-      onSelect={(x) => {
-        model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
-          recent: true,
-        })
-        props.onSelect()
-      }}
-    >
-      {(i) => (
-        <div class="w-full flex items-center gap-x-2 text-13-regular">
-          <span class="truncate">{i.name}</span>
-          <Show when={isFree(i.provider.id, i.cost)}>
-            <Tag>{language.t("model.tag.free")}</Tag>
-          </Show>
-          <Show when={i.latest}>
-            <Tag>{language.t("model.tag.latest")}</Tag>
-          </Show>
-        </div>
-      )}
-    </List>
+    <div class="flex flex-col min-h-0 flex-1">
+      <Show when={providerData.loading}>
+        <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
+      </Show>
+      <List
+        class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
+        search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
+        emptyMessage={providerData.loading ? "Loading company models..." : language.t("dialog.model.empty")}
+        key={(x) => `${x.provider.id}:${x.id}`}
+        items={models}
+        current={model.current()}
+        filterKeys={["name", "id"]}
+        sortBy={(a, b) => a.name.localeCompare(b.name)}
+        itemWrapper={(item, node) => (
+          <Tooltip
+            class="w-full"
+            placement="right-start"
+            gutter={12}
+            value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
+          >
+            {node}
+          </Tooltip>
+        )}
+        onSelect={(x) => {
+          model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
+            recent: true,
+          })
+          props.onSelect()
+        }}
+      >
+        {(i) => (
+          <div class="w-full flex items-center gap-x-2 text-13-regular">
+            <span class="truncate">{i.name}</span>
+            <Show when={isFree(i.provider.id, i.cost)}>
+              <Tag>{language.t("model.tag.free")}</Tag>
+            </Show>
+            <Show when={i.latest}>
+              <Tag>{language.t("model.tag.latest")}</Tag>
+            </Show>
+          </div>
+        )}
+      </List>
+    </div>
   )
 }
 
@@ -104,6 +145,7 @@ export function ModelSelectorPopover(props: {
     dismiss: null,
   })
   const dialog = useDialog()
+  const providers = useProviders()
 
   const close = (dismiss: Dismiss) => {
     setStore("dismiss", dismiss)
@@ -118,6 +160,7 @@ export function ModelSelectorPopover(props: {
   }
 
   const handleConnectProvider = () => {
+    if (!providers.canConnect()) return
     close("provider")
     void import("./dialog-select-provider").then((x) => {
       dialog.show(() => <x.DialogSelectProvider />)
@@ -167,16 +210,18 @@ export function ModelSelectorPopover(props: {
             class="p-1"
             action={
               <div class="flex items-center gap-1">
-                <Tooltip placement="top" value={language.t("command.provider.connect")}>
-                  <IconButton
-                    icon="plus-small"
-                    variant="ghost"
-                    iconSize="normal"
-                    class="size-6"
-                    aria-label={language.t("command.provider.connect")}
-                    onClick={handleConnectProvider}
-                  />
-                </Tooltip>
+                <Show when={providers.canConnect()}>
+                  <Tooltip placement="top" value={language.t("command.provider.connect")}>
+                    <IconButton
+                      icon="plus-small"
+                      variant="ghost"
+                      iconSize="normal"
+                      class="size-6"
+                      aria-label={language.t("command.provider.connect")}
+                      onClick={handleConnectProvider}
+                    />
+                  </Tooltip>
+                </Show>
                 <Tooltip placement="top" value={language.t("dialog.model.manage")}>
                   <IconButton
                     icon="sliders"
@@ -199,31 +244,50 @@ export function ModelSelectorPopover(props: {
 export const DialogSelectModel: Component<{ provider?: string; model?: ModelState }> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
-
-  const provider = () => {
-    void import("./dialog-select-provider").then((x) => {
-      dialog.show(() => <x.DialogSelectProvider />)
-    })
-  }
-
-  const manage = () => {
-    void import("./dialog-manage-models").then((x) => {
-      dialog.show(() => <x.DialogManageModels />)
-    })
-  }
+  const providers = useProviders()
+  const auth = useAuth()
+  const navigate = useNavigate()
 
   return (
     <Dialog
       title={language.t("dialog.model.select.title")}
       action={
-        <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={provider}>
-          {language.t("command.provider.connect")}
-        </Button>
+        <Show when={providers.canConnect()}>
+          <Button
+            class="h-7 -my-1 text-14-medium"
+            icon="plus-small"
+            tabIndex={-1}
+            onClick={() => {
+              void import("./dialog-select-provider").then((x) => {
+                dialog.show(() => <x.DialogSelectProvider />)
+              })
+            }}
+          >
+            {language.t("command.provider.connect")}
+          </Button>
+        </Show>
       }
     >
       <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
-      <Button variant="ghost" class="ml-3 mt-5 mb-6 text-text-base self-start" onClick={manage}>
+      <Button
+        variant="ghost"
+        class="ml-3 mt-5 mb-6 text-text-base self-start"
+        onClick={() => {
+          void import("./dialog-manage-models").then((x) => {
+            dialog.show(() => <x.DialogManageModels />)
+          })
+        }}
+      >
         {language.t("dialog.model.manage")}
+      </Button>
+      <Button
+        variant="ghost"
+        class="ml-3 -mt-3 mb-6 text-text-danger-base self-start"
+        onClick={() => {
+          void auth.logout().then(() => navigate("/login"))
+        }}
+      >
+        退出登录
       </Button>
     </Dialog>
   )

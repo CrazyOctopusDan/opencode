@@ -55,6 +55,7 @@ import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { GoogleAuth } from "google-auth-library"
 import { ProviderTransform } from "./transform"
 import { Installation } from "../installation"
+import { ModelPolicy } from "./model-policy"
 import { ModelID, ProviderID } from "./schema"
 
 export namespace Provider {
@@ -1014,6 +1015,7 @@ export namespace Provider {
         Effect.gen(function* () {
           using _ = log.time("state")
           const cfg = yield* config.get()
+          const policy = yield* Effect.promise(() => ModelPolicy.snapshot())
           const modelsDev = yield* Effect.promise(() => ModelsDev.get())
           const database = mapValues(modelsDev, fromModelsDevProvider)
 
@@ -1053,7 +1055,10 @@ export namespace Provider {
           const plugins = yield* plugin.list()
 
           // now read config providers - includes any modifications from plugin config() hook
-          const configProviders = Object.entries(cfg.provider ?? {})
+          const configProviders = Object.entries(cfg.provider ?? {}).filter(([providerID]) => {
+            if (!policy.enabled) return true
+            return policy.allowedProvider(providerID)
+          })
           const disabled = new Set(cfg.disabled_providers ?? [])
           const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
 
@@ -1156,6 +1161,7 @@ export namespace Provider {
           // load env
           const env = Env.all()
           for (const [id, provider] of Object.entries(database)) {
+            if (policy.enabled && !policy.allowedProvider(id)) continue
             const providerID = ProviderID.make(id)
             if (disabled.has(providerID)) continue
             const apiKey = provider.env.map((item) => env[item]).find(Boolean)
@@ -1169,6 +1175,7 @@ export namespace Provider {
           // load apikeys
           const auths = yield* auth.all().pipe(Effect.orDie)
           for (const [id, provider] of Object.entries(auths)) {
+            if (policy.enabled && !policy.allowedProvider(id)) continue
             const providerID = ProviderID.make(id)
             if (disabled.has(providerID)) continue
             if (provider.type === "api") {
@@ -1201,6 +1208,7 @@ export namespace Provider {
           }
 
           for (const [id, fn] of Object.entries(custom(dep))) {
+            if (policy.enabled && !policy.allowedProvider(id)) continue
             const providerID = ProviderID.make(id)
             if (disabled.has(providerID)) continue
             const data = database[providerID]
@@ -1229,6 +1237,22 @@ export namespace Provider {
             if (provider.name) partial.name = provider.name
             if (provider.options) partial.options = provider.options
             mergeProvider(providerID, partial)
+          }
+
+          if (policy.enabled) {
+            for (const item of policy.list) {
+              const providerID = ProviderID.make(item.id)
+              if (providers[providerID]) continue
+              providers[providerID] = {
+                id: providerID,
+                source: "custom",
+                name: item.name ?? item.id,
+                env: [],
+                options: {},
+                ...(item.apiKey ? { key: item.apiKey } : {}),
+                models: {},
+              }
+            }
           }
 
           const gitlab = ProviderID.make("gitlab")
@@ -1280,11 +1304,114 @@ export namespace Provider {
               delete providers[providerID]
               continue
             }
+            const item = policy.provider(providerID)
+            if (policy.enabled && !item) {
+              delete providers[providerID]
+              continue
+            }
+            if (item) {
+              const urls = [...new Set(item.models.map((value) => value.baseURL ?? item.baseURL))]
+              if (urls.length === 1 && urls[0]) provider.options.baseURL = urls[0]
+              if (urls.length > 1) delete provider.options.baseURL
+              if (!provider.key && item.apiKey) provider.key = item.apiKey
+            }
 
             const configProvider = cfg.provider?.[providerID]
+            const policyModel = item ? new Map(item.models.map((value) => [value.id, value])) : undefined
+
+            if (item) {
+              const sample = Object.values(provider.models)[0]
+              for (const value of item.models) {
+                const id = ModelID.make(value.id)
+                if (provider.models[id]) continue
+                const fallback: Model = {
+                  id,
+                  providerID,
+                  api: {
+                    id: value.id,
+                    url: value.baseURL ?? item.baseURL,
+                    npm: "@ai-sdk/openai-compatible",
+                  },
+                  name: value.name ?? value.id,
+                  family: "",
+                  capabilities: {
+                    temperature: true,
+                    reasoning: false,
+                    attachment: true,
+                    toolcall: true,
+                    input: {
+                      text: true,
+                      audio: false,
+                      image: true,
+                      video: false,
+                      pdf: true,
+                    },
+                    output: {
+                      text: true,
+                      audio: false,
+                      image: false,
+                      video: false,
+                      pdf: false,
+                    },
+                    interleaved: false,
+                  },
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: {
+                      read: 0,
+                      write: 0,
+                    },
+                  },
+                  limit: {
+                    context: value.contextLength ?? 32000,
+                    output: value.maxTokens ?? 8192,
+                  },
+                  status: "active",
+                  options: {},
+                  headers: {},
+                  release_date: "",
+                  variants: {},
+                }
+                const merged: Model = sample
+                  ? {
+                      ...sample,
+                      id,
+                      providerID,
+                      api: {
+                        ...sample.api,
+                        id: value.id,
+                        url: value.baseURL ?? item.baseURL,
+                        npm: "@ai-sdk/openai-compatible",
+                      },
+                      name: value.name ?? value.id,
+                      limit: {
+                        ...sample.limit,
+                        context: value.contextLength ?? sample.limit.context,
+                        output: value.maxTokens ?? sample.limit.output,
+                      },
+                      status: "active",
+                      release_date: sample.release_date ?? "",
+                    }
+                  : fallback
+                provider.models[id] = merged
+              }
+            }
 
             for (const [modelID, model] of Object.entries(provider.models)) {
+              if (item && !policy.allowedModel(providerID, modelID)) {
+                delete provider.models[modelID]
+                continue
+              }
+              const modelPolicy = policyModel?.get(modelID)
               model.api.id = model.api.id ?? model.id ?? modelID
+              if (item) {
+                model.api.npm = "@ai-sdk/openai-compatible"
+                model.api.url = modelPolicy?.baseURL ?? item.baseURL
+                if (modelPolicy?.contextLength) model.limit.context = modelPolicy.contextLength
+                if (modelPolicy?.maxTokens) model.limit.output = modelPolicy.maxTokens
+                if (modelPolicy?.apiKey && !provider.key) provider.key = modelPolicy.apiKey
+              }
               if (
                 modelID === "gpt-5-chat-latest" ||
                 (providerID === ProviderID.openrouter && modelID === "openai/gpt-5-chat")
