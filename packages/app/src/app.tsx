@@ -148,7 +148,7 @@ function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
 function RouterRootWithAuth(props: ParentProps<{ appChildren?: JSX.Element }>) {
   const auth = useAuth()
   return (
-    <Show when={auth.loggedIn()} fallback={<RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>}>
+    <Show when={auth.loggedIn()} fallback={props.children}>
       <GlobalSDKProvider>
         <GlobalSyncProvider>
           <RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>
