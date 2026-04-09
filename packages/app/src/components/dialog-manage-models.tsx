@@ -29,8 +29,10 @@ export const DialogManageModels: Component = () => {
   const models = createMemo(() => {
     const list = providerData()
     if (!list) return local.model.list().filter(() => false)
-    const connected = new Set(list.connected)
-    return list.all
+    const enterprise = list.all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+    const allowed = new Set(enterprise.map((item) => item.id))
+    const connected = new Set(list.connected.filter((id) => allowed.has(id)))
+    return enterprise
       .filter((provider) => connected.has(provider.id))
       .flatMap((provider) =>
         Object.values(provider.models).map((model) => ({

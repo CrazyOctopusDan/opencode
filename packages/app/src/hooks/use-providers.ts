@@ -27,18 +27,27 @@ export function useProviders() {
     }
     return globalSync.data.provider
   })
-  const connectedIDs = createMemo(() => new Set(providers().connected))
-  const connected = createMemo(() => providers().all.filter((p) => connectedIDs().has(p.id)))
+  const enterprise = createMemo(() => {
+    const all = providers().all
+    const picked = all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+    if (picked.length > 0) return picked
+    return [] as typeof all
+  })
+  const connectedIDs = createMemo(() => {
+    const allowed = new Set(enterprise().map((item) => item.id))
+    return new Set(providers().connected.filter((id) => allowed.has(id)))
+  })
+  const connected = createMemo(() => enterprise().filter((p) => connectedIDs().has(p.id)))
   const paid = createMemo(() =>
     connected().filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input)),
   )
-  const popular = createMemo(() => providers().all.filter((p) => popularProviderSet.has(p.id)))
+  const popular = createMemo(() => enterprise().filter((p) => popularProviderSet.has(p.id)))
   const canConnect = createMemo(() => {
     if (!connectEnabled) return false
-    return providers().all.some((item) => !connectedIDs().has(item.id))
+    return enterprise().some((item) => !connectedIDs().has(item.id))
   })
   return {
-    all: createMemo(() => providers().all),
+    all: enterprise,
     default: createMemo(() => providers().default),
     popular,
     connected,

@@ -33,8 +33,10 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
       const data = (result.data ?? { all: [], connected: [], default: {} }) as (typeof result.data & {
         debug_tempo?: unknown
       })
-      const connected = new Set(data.connected)
-      const models = data.all
+      const enterprise = data.all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+      const allowed = new Set(enterprise.map((item) => item.id))
+      const connected = new Set(data.connected.filter((id) => allowed.has(id)))
+      const models = enterprise
         .filter((provider) => connected.has(provider.id))
         .flatMap((provider) =>
           Object.values(provider.models).map((model) => ({
@@ -47,10 +49,10 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
       return {
         ok: true as const,
         latency: Date.now() - started,
-        providers: data.all.length,
-        connected: data.connected.length,
+        providers: enterprise.length,
+        connected: [...connected].length,
         models,
-        providerIDs: data.all.map((item) => item.id),
+        providerIDs: enterprise.map((item) => item.id),
         debug_tempo: data.debug_tempo,
       }
     } catch (error) {

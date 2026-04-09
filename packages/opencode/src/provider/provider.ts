@@ -1015,9 +1015,50 @@ export namespace Provider {
         Effect.gen(function* () {
           using _ = log.time("state")
           const cfg = yield* config.get()
-          const policy = yield* Effect.promise(() => ModelPolicy.snapshot())
+          const rawPolicy = yield* Effect.promise(() => ModelPolicy.snapshot())
           const modelsDev = yield* Effect.promise(() => ModelsDev.get())
           const database = mapValues(modelsDev, fromModelsDevProvider)
+          const compatTarget = database["openai"] || cfg.provider?.["openai"] ? "openai" : undefined
+          const policy = (() => {
+            if (!rawPolicy.enabled) return rawPolicy
+            const list = rawPolicy.list
+            if (list.length === 0) return rawPolicy
+            const target = compatTarget ?? "travelSky"
+            const all = new Map<string, (typeof list)[number]["models"][number]>()
+            let baseURL = list[0].baseURL
+            let apiKey = list[0].apiKey
+            for (const provider of list) {
+              if (!baseURL && provider.baseURL) baseURL = provider.baseURL
+              if (!apiKey && provider.apiKey) apiKey = provider.apiKey
+              for (const model of provider.models) {
+                const key = model.id
+                const current = all.get(key)
+                if (current) continue
+                all.set(key, {
+                  ...model,
+                  baseURL: model.baseURL ?? provider.baseURL,
+                  apiKey: model.apiKey ?? provider.apiKey,
+                })
+              }
+            }
+            const merged = [
+              {
+                id: target,
+                name: "travelSky",
+                baseURL,
+                apiKey,
+                models: [...all.values()],
+              },
+            ]
+            return {
+              ...rawPolicy,
+              list: merged,
+              provider: (id: string) => merged.find((item) => item.id === id),
+              allowedProvider: (id: string) => merged.some((item) => item.id === id),
+              allowedModel: (providerID: string, modelID: string) =>
+                merged.some((item) => item.id === providerID && item.models.some((model) => model.id === modelID)),
+            }
+          })()
 
           const providers: Record<ProviderID, Info> = {} as Record<ProviderID, Info>
           const languages = new Map<string, LanguageModelV3>()
@@ -1310,6 +1351,7 @@ export namespace Provider {
               continue
             }
             if (item) {
+              provider.name = item.name ?? provider.name
               const urls = [...new Set(item.models.map((value) => value.baseURL ?? item.baseURL))]
               if (urls.length === 1 && urls[0]) provider.options.baseURL = urls[0]
               if (urls.length > 1) delete provider.options.baseURL

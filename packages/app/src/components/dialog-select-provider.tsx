@@ -1,6 +1,6 @@
 import { Component, Show } from "solid-js"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { useProviders } from "@/hooks/use-providers"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -12,14 +12,11 @@ export const DialogSelectProvider: Component = () => {
   const dialog = useDialog()
   const providers = useProviders()
   const language = useLanguage()
-
-  const popularGroup = () => language.t("dialog.provider.group.popular")
-  const otherGroup = () => language.t("dialog.provider.group.other")
-  const note = (id: string) => {
-    if (id === "anthropic") return language.t("dialog.provider.anthropic.note")
-    if (id === "openai") return language.t("dialog.provider.openai.note")
-    if (id.startsWith("github-copilot")) return language.t("dialog.provider.copilot.note")
-    if (id === "opencode-go") return language.t("dialog.provider.opencodeGo.tagline")
+  const items = () => {
+    const all = providers.all()
+    const enterprise = all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+    if (enterprise.length > 0) return enterprise
+    return all
   }
 
   return (
@@ -29,23 +26,9 @@ export const DialogSelectProvider: Component = () => {
         emptyMessage={language.t("dialog.provider.empty")}
         activeIcon="plus-small"
         key={(x) => x?.id}
-        items={() => {
-          language.locale()
-          return providers.all()
-        }}
+        items={items}
         filterKeys={["id", "name"]}
-        groupBy={(x) => (popularProviders.includes(x.id) ? popularGroup() : otherGroup())}
-        sortBy={(a, b) => {
-          if (popularProviders.includes(a.id) && popularProviders.includes(b.id))
-            return popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id)
-          return a.name.localeCompare(b.name)
-        }}
-        sortGroupsBy={(a, b) => {
-          const popular = popularGroup()
-          if (a.category === popular && b.category !== popular) return -1
-          if (b.category === popular && a.category !== popular) return 1
-          return 0
-        }}
+        sortBy={(a, b) => a.name.localeCompare(b.name)}
         onSelect={(x) => {
           if (!x) return
           dialog.show(() => <DialogConnectProvider provider={x.id} />)
@@ -59,10 +42,6 @@ export const DialogSelectProvider: Component = () => {
               <div class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</div>
             </Show>
             <Show when={i.id === "opencode"}>
-              <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-            </Show>
-            <Show when={note(i.id)}>{(value) => <div class="text-14-regular text-text-weak">{value()}</div>}</Show>
-            <Show when={i.id === "opencode-go"}>
               <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
             </Show>
           </div>

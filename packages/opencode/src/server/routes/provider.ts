@@ -1,12 +1,11 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-import { Config } from "../../config/config"
 import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
 import { ProviderAuth } from "../../provider/auth"
 import { ProviderID } from "../../provider/schema"
-import { mapValues } from "remeda"
+import { fromEntries } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { ModelPolicy } from "../../provider/model-policy"
@@ -17,6 +16,13 @@ function localToken(header: string | undefined) {
   const token = header.slice("Bearer ".length).trim()
   if (!token) return
   return token
+}
+
+function enterpriseOnly(input: Record<string, any>) {
+  const all = Object.values(input)
+  const enterprise = all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+  if (enterprise.length > 0) return fromEntries(enterprise.map((item) => [item.id, item]))
+  return {}
 }
 
 export const ProviderRoutes = lazy(() =>
@@ -58,37 +64,15 @@ export const ProviderRoutes = lazy(() =>
           },
           tempo: TempoApi.trace(),
         }
-        if (policy.enabled) {
-          const providers = await Provider.list()
-          return c.json({
-            all: Object.values(providers),
-            default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
-            connected: Object.keys(providers),
-            debug_tempo: debugTempo,
-          })
-        }
-
-        const config = await Config.get()
-        const disabled = new Set(config.disabled_providers ?? [])
-        const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
-
-        const allProviders = await ModelsDev.get()
-        const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
-        for (const [key, value] of Object.entries(allProviders)) {
-          if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
-            filteredProviders[key] = value
-          }
-        }
-
         const connected = await Provider.list()
-        const providers = Object.assign(
-          mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x)),
-          connected,
+        const providers = enterpriseOnly(connected as any)
+        const defaults = Object.fromEntries(
+          Object.entries(providers).map(([id, item]) => [id, Object.keys((item as any).models ?? {})[0] ?? ""]),
         )
         return c.json({
           all: Object.values(providers),
-          default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
-          connected: Object.keys(connected),
+          default: defaults,
+          connected: Object.keys(providers),
           debug_tempo: debugTempo,
         })
       },
