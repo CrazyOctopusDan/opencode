@@ -1018,12 +1018,11 @@ export namespace Provider {
           const rawPolicy = yield* Effect.promise(() => ModelPolicy.snapshot())
           const modelsDev = yield* Effect.promise(() => ModelsDev.get())
           const database = mapValues(modelsDev, fromModelsDevProvider)
-          const compatTarget = database["openai"] || cfg.provider?.["openai"] ? "openai" : undefined
           const policy = (() => {
             if (!rawPolicy.enabled) return rawPolicy
             const list = rawPolicy.list
             if (list.length === 0) return rawPolicy
-            const target = compatTarget ?? "travelSky"
+            const target = "travelSky"
             const all = new Map<string, (typeof list)[number]["models"][number]>()
             let baseURL = list[0].baseURL
             let apiKey = list[0].apiKey

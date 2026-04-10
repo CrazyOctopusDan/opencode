@@ -33,7 +33,7 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
       const data = (result.data ?? { all: [], connected: [], default: {} }) as (typeof result.data & {
         debug_tempo?: unknown
       })
-      const enterprise = data.all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
       const allowed = new Set(enterprise.map((item) => item.id))
       const connected = new Set(data.connected.filter((id) => allowed.has(id)))
       const models = enterprise

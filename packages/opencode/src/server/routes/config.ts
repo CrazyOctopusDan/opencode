@@ -3,7 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { Config } from "../../config/config"
 import { Provider } from "../../provider/provider"
-import { mapValues } from "remeda"
+import { fromEntries, mapValues } from "remeda"
 import { errors } from "../error"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
@@ -16,6 +16,13 @@ function localToken(header: string | undefined) {
   const token = header.slice("Bearer ".length).trim()
   if (!token) return
   return token
+}
+
+function enterpriseOnly(input: Record<string, any>) {
+  const all = Object.values(input)
+  const enterprise = all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+  if (enterprise.length > 0) return fromEntries(enterprise.map((item) => [item.id, item]))
+  return {}
 }
 
 export const ConfigRoutes = lazy(() =>
@@ -119,10 +126,13 @@ export const ConfigRoutes = lazy(() =>
         using _ = log.time("providers")
         const token = localToken(c.req.header("authorization"))
         await ModelPolicy.snapshot(true, token)
-        const providers = await Provider.list().then((x) => mapValues(x, (item) => item))
+        const providers = await Provider.list().then((x) => enterpriseOnly(mapValues(x, (item) => item)))
+        const defaults = Object.fromEntries(
+          Object.entries(providers).map(([id, item]) => [id, Object.keys((item as any).models ?? {})[0] ?? ""]),
+        )
         return c.json({
           providers: Object.values(providers),
-          default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
+          default: defaults,
         })
       },
     ),

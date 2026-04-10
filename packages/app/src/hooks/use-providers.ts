@@ -29,7 +29,7 @@ export function useProviders() {
   })
   const enterprise = createMemo(() => {
     const all = providers().all
-    const picked = all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+    const picked = all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
     if (picked.length > 0) return picked
     return [] as typeof all
   })

@@ -20,7 +20,7 @@ function localToken(header: string | undefined) {
 
 function enterpriseOnly(input: Record<string, any>) {
   const all = Object.values(input)
-  const enterprise = all.filter((item) => item.id === "openai" || item.id === "travelSky" || item.name === "travelSky")
+  const enterprise = all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
   if (enterprise.length > 0) return fromEntries(enterprise.map((item) => [item.id, item]))
   return {}
 }
