@@ -1,0 +1,126 @@
+# Fork 专用：从 publish.yml 提取 Linux Desktop 打包流程
+
+name: Build Desktop (Linux)
+
+on:
+  push:
+    branches: [dev-sapphire]
+  workflow_dispatch:
+
+concurrency:
+  group: build-desktop-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: version
+        run: |
+          V=$(node -p "require('./packages/opencode/package.json').version")
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build
+        run: |
+          ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli
+          path: |
+            packages/opencode/dist/opencode-linux*
+
+  build-desktop-linux:
+    needs: [version, build-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: ${{ runner.os }}-x86_64-unknown-linux-gnu-apt-${{ hashFiles('.github/workflows/publish.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-unknown-linux-gnu-apt-
+
+      - name: install dependencies (ubuntu only)
+        run: |
+          mkdir -p ~/apt-cache && chmod -R a+rw ~/apt-cache
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends -o dir::cache::archives="$HOME/apt-cache" libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo chmod -R a+rw ~/apt-cache
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri
+          shared-key: x86_64-unknown-linux-gnu
+
+      - name: Prepare
+        run: |
+          cd packages/desktop
+          bun ./scripts/prepare.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+          OPENCODE_CLI_ARTIFACT: opencode-cli
+          RUST_TARGET: x86_64-unknown-linux-gnu
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Resolve tauri portable SHA
+        run: echo "TAURI_PORTABLE_SHA=$(git ls-remote https://github.com/tauri-apps/tauri.git refs/heads/feat/truly-portable-appimage | cut -f1)" >> "$GITHUB_ENV"
+
+      # Fixes AppImage build issues, can be removed when https://github.com/tauri-apps/tauri/pull/12491 is released
+      - name: Install tauri-cli from portable appimage branch
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: tauri-cli
+          git: https://github.com/tauri-apps/tauri
+          rev: ${{ env.TAURI_PORTABLE_SHA }}
+
+      - name: Show tauri-cli version
+        run: cargo tauri --version
+
+      - name: Build and upload artifacts
+        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
+        timeout-minutes: 60
+        with:
+          projectPath: packages/desktop
+          uploadWorkflowArtifacts: true
+          tauriScript: cargo tauri
+          args: --target x86_64-unknown-linux-gnu --config ./src-tauri/tauri.prod.conf.json --verbose
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: true
