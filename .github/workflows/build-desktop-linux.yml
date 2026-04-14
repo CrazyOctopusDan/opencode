@@ -39,7 +39,7 @@ jobs:
 
       - name: Build
         run: |
-          ./packages/opencode/script/build.ts --single
+          ./packages/opencode/script/build.ts
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
 
