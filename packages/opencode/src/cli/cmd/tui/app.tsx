@@ -60,6 +60,7 @@ import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
 import { TuiConfig } from "@/config/tui"
 import { createTuiApi, TuiPluginRuntime, type RouteMap } from "./plugin"
 import { FormatError, FormatUnknownError } from "@/cli/error"
+import { isTravelSky } from "@/cli/travelsky/provider"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -267,6 +268,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
+  const travel = createMemo(() => {
+    const one = sync.data.provider_next.all.find((item) => isTravelSky(item.id))
+    if (one) return one.id
+    const two = sync.data.provider.find((item) => isTravelSky(item.id))
+    if (two) return two.id
+    return "travelSky"
+  })
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
   const routeView = (name: string) => {
@@ -511,7 +519,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         name: "models",
       },
       onSelect: () => {
-        dialog.replace(() => <DialogModel />)
+        dialog.replace(() => <DialogModel providerID={travel()} />)
       },
     },
     {
@@ -627,7 +635,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         name: "connect",
       },
       onSelect: () => {
-        dialog.replace(() => <DialogProviderList />)
+        dialog.replace(() => <DialogModel providerID={travel()} />)
       },
       category: "Provider",
     },

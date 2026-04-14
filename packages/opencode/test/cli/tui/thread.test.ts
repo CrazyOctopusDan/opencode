@@ -10,11 +10,26 @@ import * as Network from "../../../src/cli/network"
 import * as Win32 from "../../../src/cli/cmd/tui/win32"
 import { TuiConfig } from "../../../src/config/tui"
 import { Instance } from "../../../src/project/instance"
+import * as TravelSky from "../../../src/cli/travelsky/bootstrap"
 
 const stop = new Error("stop")
 const seen = {
   tui: [] as string[],
   inst: [] as string[],
+  auth: [] as string[],
+}
+
+function auth(input: RequestInit["headers"]) {
+  if (!input) return
+  if (Array.isArray(input)) {
+    const item = input.find((item) => item[0].toLowerCase() === "authorization")
+    return item?.[1]
+  }
+  if (input instanceof Headers) {
+    return input.get("authorization") ?? undefined
+  }
+  if ("Authorization" in input && typeof input.Authorization === "string") return input.Authorization
+  if ("authorization" in input && typeof input.authorization === "string") return input.authorization
 }
 
 function setup() {
@@ -25,6 +40,8 @@ function setup() {
   // https://github.com/oven-sh/bun/issues/7823 and #12823.
   spyOn(App, "tui").mockImplementation(async (input) => {
     if (input.directory) seen.tui.push(input.directory)
+    const value = auth(input.headers)
+    if (value) seen.auth.push(value)
     throw stop
   })
   spyOn(Rpc, "client").mockImplementation(() => ({
@@ -43,6 +60,7 @@ function setup() {
   spyOn(Win32, "win32DisableProcessedInput").mockImplementation(() => {})
   spyOn(Win32, "win32InstallCtrlCGuard").mockReturnValue(undefined)
   spyOn(TuiConfig, "get").mockResolvedValue({})
+  spyOn(TravelSky, "ensureLogin").mockResolvedValue("Bearer test")
   spyOn(Instance, "provide").mockImplementation(async (input) => {
     seen.inst.push(input.directory)
     return input.fn()
@@ -87,6 +105,7 @@ describe("tui thread", () => {
     const type = process.platform === "win32" ? "junction" : "dir"
     seen.tui.length = 0
     seen.inst.length = 0
+    seen.auth.length = 0
     await fs.symlink(tmp.path, link, type)
 
     Object.defineProperty(process.stdin, "isTTY", {
@@ -107,6 +126,7 @@ describe("tui thread", () => {
       await expect(call(project)).rejects.toBe(stop)
       expect(seen.inst[0]).toBe(tmp.path)
       expect(seen.tui[0]).toBe(tmp.path)
+      expect(seen.auth[0]).toBe("Bearer test")
     } finally {
       process.chdir(cwd)
       if (pwd === undefined) delete process.env.PWD

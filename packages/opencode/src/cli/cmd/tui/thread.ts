@@ -16,6 +16,8 @@ import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 import { TuiConfig } from "@/config/tui"
 import { Instance } from "@/project/instance"
 import { writeHeapSnapshot } from "v8"
+import { ensureLogin } from "@/cli/travelsky/bootstrap"
+import { headers as authHeaders } from "@/cli/travelsky/header"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -205,6 +207,24 @@ export const TuiThreadCommand = cmd({
             events: createEventSource(client),
           }
 
+      let auth: string | undefined
+      try {
+        auth = await ensureLogin({
+          base: transport.url,
+          fetch: transport.fetch,
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        UI.error(msg)
+        process.exitCode = 1
+        return
+      }
+      if (!auth) {
+        UI.error("TravelSky login cancelled")
+        process.exitCode = 1
+        return
+      }
+
       setTimeout(() => {
         client.call("checkUpgrade", { directory: cwd }).catch(() => {})
       }, 1000).unref?.()
@@ -221,6 +241,7 @@ export const TuiThreadCommand = cmd({
           directory: cwd,
           fetch: transport.fetch,
           events: transport.events,
+          headers: authHeaders(auth),
           args: {
             continue: args.continue,
             sessionID: args.session,

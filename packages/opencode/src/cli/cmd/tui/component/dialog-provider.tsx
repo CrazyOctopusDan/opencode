@@ -14,8 +14,11 @@ import { useKeyboard } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "@tui/util/provider-origin"
+import { isTravelSky } from "@/cli/travelsky/provider"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
+  travelSky: 0,
+  travelsky: 0,
   opencode: 0,
   "opencode-go": 1,
   openai: 2,
@@ -32,7 +35,7 @@ export function createDialogProviderOptions() {
   const { theme } = useTheme()
   const options = createMemo(() => {
     return pipe(
-      sync.data.provider_next.all,
+      sync.data.provider_next.all.filter((item) => isTravelSky(item.id)),
       sortBy((x) => PROVIDER_PRIORITY[x.id] ?? 99),
       map((provider) => {
         const consoleManaged = isConsoleManagedProvider(sync.data.console_state.consoleManagedProviders, provider.id)
@@ -42,6 +45,8 @@ export function createDialogProviderOptions() {
           title: provider.name,
           value: provider.id,
           description: {
+            travelSky: "(TravelSky)",
+            travelsky: "(TravelSky)",
             opencode: "(Recommended)",
             anthropic: "(API key)",
             openai: "(ChatGPT Plus/Pro or API key)",
