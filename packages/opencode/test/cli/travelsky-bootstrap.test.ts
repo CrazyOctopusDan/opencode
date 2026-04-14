@@ -35,7 +35,7 @@ describe("travelsky bootstrap", () => {
 
     const auth = await ensureLogin({
       base: "http://local",
-      fetch: fetch as typeof globalThis.fetch,
+      fetch: fetch as unknown as typeof globalThis.fetch,
     })
     expect(auth).toBe("Bearer stored-token")
   })
@@ -63,9 +63,8 @@ describe("travelsky bootstrap", () => {
 
     const auth = await ensureLogin({
       base: "http://local",
-      fetch: fetch as typeof globalThis.fetch,
+      fetch: fetch as unknown as typeof globalThis.fetch,
     })
     expect(auth).toBe("Bearer new-token")
   })
 })
-

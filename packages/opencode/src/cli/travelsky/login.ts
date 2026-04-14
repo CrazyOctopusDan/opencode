@@ -6,11 +6,6 @@ type Ok = {
   expires_in: number
 }
 
-type Err = {
-  message?: string
-  error?: string
-}
-
 function parse(input: unknown) {
   if (!input || typeof input !== "object") return
   const item = input as Record<string, unknown>
@@ -22,6 +17,14 @@ function parse(input: unknown) {
     token_type: "Bearer",
     expires_in: Math.floor(item.expires_in),
   } satisfies Ok
+}
+
+function fail(input: unknown) {
+  if (!input || typeof input !== "object") return "登录失败"
+  const item = input as Record<string, unknown>
+  if (typeof item.message === "string" && item.message) return item.message
+  if (typeof item.error === "string" && item.error) return item.error
+  return "登录失败"
 }
 
 export async function request(input: {
@@ -44,11 +47,10 @@ export async function request(input: {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`Login request failed: ${msg}`)
   })
-  const body = (await res.json().catch(() => undefined)) as Ok | Err | undefined
+  const body = await res.json().catch(() => undefined)
   const data = parse(body)
   if (res.ok && data) return data
-  const msg = body && typeof body === "object" ? (body.message ?? body.error ?? "Login failed") : "Login failed"
-  throw new Error(String(msg))
+  throw new Error(fail(body))
 }
 
 export async function prompt(input: { base: string; fetch?: typeof fetch }) {
@@ -99,4 +101,3 @@ export async function prompt(input: { base: string; fetch?: typeof fetch }) {
     if (prompts.isCancel(pick) || pick === "exit") return
   }
 }
-

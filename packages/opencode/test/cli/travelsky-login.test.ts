@@ -49,7 +49,7 @@ describe("travelsky login request", () => {
       base: "http://local",
       user: "u",
       pass: "p",
-      fetch: fetch as typeof globalThis.fetch,
+      fetch: fetch as unknown as typeof globalThis.fetch,
     })
     expect(item.access_token).toBe("abc")
     expect(item.token_type).toBe("Bearer")
@@ -75,7 +75,7 @@ describe("travelsky login request", () => {
         base: "http://local",
         user: "u",
         pass: "p",
-        fetch: fetch as typeof globalThis.fetch,
+        fetch: fetch as unknown as typeof globalThis.fetch,
       }),
     ).rejects.toThrow("invalid account")
   })
@@ -116,7 +116,7 @@ describe("travelsky login request", () => {
 
     const item = await prompt({
       base: "http://local",
-      fetch: fetch as typeof globalThis.fetch,
+      fetch: fetch as unknown as typeof globalThis.fetch,
     })
     expect(item?.access_token).toBe("ok")
     expect(item?.username).toBe("user")
@@ -139,7 +139,7 @@ describe("travelsky login request", () => {
 
     const item = await prompt({
       base: "http://local",
-      fetch: fetch as typeof globalThis.fetch,
+      fetch: fetch as unknown as typeof globalThis.fetch,
     })
     expect(item).toBeUndefined()
     expect(select).toHaveBeenCalledTimes(1)
