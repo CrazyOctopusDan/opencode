@@ -259,6 +259,10 @@ function normalizePolicy(payload: unknown): PolicyProvider[] {
 }
 
 export namespace TempoApi {
+  export function baseURL() {
+    return base()
+  }
+
   export function enabled() {
     if (Flag.OPENCODE_TEMPO_BASE_URL?.trim()) return true
     const env = Flag.OPENCODE_TEMPO_ENV?.trim().toLowerCase()
@@ -337,7 +341,9 @@ export namespace TempoApi {
       const res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          plugin: "open-code"
+        }),
       })
       const payload = await res.json().catch(() => ({}))
       const success = payload && typeof payload === "object" ? (payload as Record<string, unknown>).success : undefined

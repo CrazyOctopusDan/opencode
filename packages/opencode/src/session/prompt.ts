@@ -48,6 +48,8 @@ import { Cause, Effect, Exit, Layer, Option, Scope, ServiceMap } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { TaskTool } from "@/tool/task"
+import { TempoMetric } from "@/server/tempo-metric"
+import { SessionMetric } from "./metric"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1562,8 +1564,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             continue
           }
 
+          const out = yield* lastAssistant(sessionID)
+          if (out.info.role === "assistant") {
+            const rows = yield* MessageV2.filterCompactedEffect(sessionID)
+            const body = SessionMetric.build({
+              rows,
+              parent: out.info.parentID,
+              model: out.info.modelID,
+              provider: out.info.providerID,
+            })
+            if (body) yield* Effect.promise(() => TempoMetric.send(body))
+          }
           yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
-          return yield* lastAssistant(sessionID)
+          return out
         },
       )
 
