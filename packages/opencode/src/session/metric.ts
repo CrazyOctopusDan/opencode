@@ -81,18 +81,13 @@ function tool(input: MessageV2.WithParts[]): Tool {
   return input
     .flatMap((row) => row.parts)
     .filter((part): part is MessageV2.ToolPart => part.type === "tool")
-    .reduce(
-      (acc, part) => ({
-        total: acc.total + 1,
-        by_name: {
-          ...acc.by_name,
-          [part.tool]: (acc.by_name[part.tool] ?? 0) + 1,
-        },
-        by_status: {
-          ...acc.by_status,
-          [part.state.status]: (acc.by_status[part.state.status] ?? 0) + 1,
-        },
-      }),
+    .reduce<Tool>(
+      (acc, part) => {
+        acc.total += 1
+        acc.by_name[part.tool] = (acc.by_name[part.tool] ?? 0) + 1
+        acc.by_status[part.state.status] = (acc.by_status[part.state.status] ?? 0) + 1
+        return acc
+      },
       { total: 0, by_name: {}, by_status: {} },
     )
 }

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { ModelID, ProviderID } from "../../src/provider/schema"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionMetric } from "../../src/session/metric"
+import { MessageID, PartID, SessionID } from "../../src/session/schema"
 
 function msg(input: {
   id: string
@@ -21,13 +23,18 @@ function msg(input: {
     total?: number
   }
 }): MessageV2.WithParts {
+  const id = MessageID.make(input.id)
+  const parent = MessageID.make(input.parent)
+  const sid = SessionID.make("s1")
+  const model = ModelID.make(input.model)
+  const provider = ProviderID.make(input.provider)
   const tools =
     input.tool
       ? [
           {
-            id: `${input.id}-t1`,
-            messageID: input.id,
-            sessionID: "s1",
+            id: PartID.ascending(),
+            messageID: id,
+            sessionID: sid,
             type: "tool" as const,
             callID: `${input.id}-call`,
             tool: input.tool.name,
@@ -65,12 +72,12 @@ function msg(input: {
 
   return {
     info: {
-      id: input.id,
+      id,
       role: "assistant",
-      sessionID: "s1",
-      parentID: input.parent,
-      modelID: input.model,
-      providerID: input.provider,
+      sessionID: sid,
+      parentID: parent,
+      modelID: model,
+      providerID: provider,
       mode: "build",
       agent: "build",
       path: { cwd: "/tmp", root: "/tmp" },
@@ -89,9 +96,9 @@ function msg(input: {
     },
     parts: [
       {
-        id: `${input.id}-p1`,
-        messageID: input.id,
-        sessionID: "s1",
+        id: PartID.ascending(),
+        messageID: id,
+        sessionID: sid,
         type: "text",
         text: input.text,
       },
@@ -133,7 +140,7 @@ describe("session metric", () => {
 
     const body = SessionMetric.build({
       rows,
-      parent: "u1",
+      parent: MessageID.make("u1"),
       model: "qwen-1",
       provider: "travelSky",
     })
@@ -169,7 +176,7 @@ describe("session metric", () => {
 
     const body = SessionMetric.build({
       rows,
-      parent: "u1",
+      parent: MessageID.make("u1"),
       model: "gpt-5",
       provider: "openai",
     })

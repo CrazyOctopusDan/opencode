@@ -14,7 +14,7 @@ describe("tempo metric", () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       req = new Request(input, init)
       return new Response("ok", { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       TempoSession.set("local", { token: "tempo-token" })
@@ -46,7 +46,7 @@ describe("tempo metric", () => {
     globalThis.fetch = (async () => {
       hit = true
       return new Response("ok", { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const ok = await TempoMetric.send({
