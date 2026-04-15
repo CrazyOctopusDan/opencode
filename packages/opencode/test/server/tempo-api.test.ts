@@ -17,20 +17,20 @@ describe("tempo api model normalization", () => {
           data: [
             {
               id: 1000001,
-              title: "Qwen3-Coder-480B-A35B",
+              title: "Qwen3 Coder 480B A35B",
               provider: "openai",
               apiBase: "https://tempo.travelsky.com.cn/ai_qwen3-coder-480b-a35b/v1",
-              model: "Qwen3-Coder-480B-A35B",
+              model: "qwen3-coder-480b-a35b",
               apiKey: "sk-1",
               contextLength: 32000,
               completionOptions: { maxTokens: 20000 },
             },
             {
               id: 1000002,
-              title: "Qwen3-Coder-30B",
+              title: "Qwen3 Coder 30B",
               provider: "openai",
               apiBase: "https://tempo.travelsky.com.cn/ai_qwen3-coder-30b/v1",
-              model: "Qwen3-Coder-30B",
+              model: "qwen3-coder-30b",
               apiKey: "sk-2",
               contextLength: 32000,
               completionOptions: { maxTokens: 20000 },
@@ -49,14 +49,16 @@ describe("tempo api model normalization", () => {
       expect(result?.[0]?.models.length).toBe(2)
 
       const ids = new Set(result?.[0]?.models.map((item) => item.id))
-      expect(ids.has("Qwen3-Coder-480B-A35B")).toBeTrue()
-      expect(ids.has("Qwen3-Coder-30B")).toBeTrue()
+      expect(ids.has("qwen3-coder-480b-a35b")).toBeTrue()
+      expect(ids.has("qwen3-coder-30b")).toBeTrue()
 
       const byId = Object.fromEntries(result?.[0]?.models.map((item) => [item.id, item]) ?? [])
-      expect(byId["Qwen3-Coder-480B-A35B"].baseURL).toBe(
+      expect(byId["qwen3-coder-480b-a35b"].name).toBe("Qwen3 Coder 480B A35B")
+      expect(byId["qwen3-coder-480b-a35b"].baseURL).toBe(
         "https://tempo.travelsky.com.cn/ai_qwen3-coder-480b-a35b/v1",
       )
-      expect(byId["Qwen3-Coder-30B"].baseURL).toBe("https://tempo.travelsky.com.cn/ai_qwen3-coder-30b/v1")
+      expect(byId["qwen3-coder-30b"].name).toBe("Qwen3 Coder 30B")
+      expect(byId["qwen3-coder-30b"].baseURL).toBe("https://tempo.travelsky.com.cn/ai_qwen3-coder-30b/v1")
     } finally {
       globalThis.fetch = originalFetch
     }

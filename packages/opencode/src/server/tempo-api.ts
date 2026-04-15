@@ -119,11 +119,12 @@ function asArray(value: unknown) {
 }
 
 function normalizeModel(item: Record<string, unknown>) {
-  const id = [item.model, item.id, item.model_id, item.modelId, item.modelCode, item.code, item.name].find(
+  const model = [item.model, item.model_id, item.modelId, item.modelCode, item.code].find(
     (value) => typeof value === "string" && value.length > 0,
   )
+  const id = [model, item.id, item.name].find((value) => typeof value === "string" && value.length > 0)
   if (typeof id !== "string") return
-  const name = [item.titile, item.title, item.name, item.modelName].find(
+  const name = [item.title, item.titile, item.name, item.modelName].find(
     (value) => typeof value === "string" && value.length > 0,
   )
   const apiKey = typeof item.apiKey === "string" && item.apiKey.length > 0 ? item.apiKey : undefined
