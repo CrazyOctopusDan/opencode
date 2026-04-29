@@ -273,7 +273,7 @@ export namespace TempoApi {
   export async function login(input: { username: string; password: string }) {
     const url = `${base()}${loginPath}`
     const enPasswd = SM2.encryptPassword(input.password, Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY)
-    const body = { username: input.username, enPasswd }
+    const body = { username: input.username, enPasswd, plugin: "OpenCode" }
     try {
       const res = await fetch(url, {
         method: "POST",
