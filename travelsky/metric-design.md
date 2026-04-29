@@ -25,6 +25,14 @@
 - 工具调用（写入 `other`）：
   - 汇总同一轮 assistant 消息的 `tool` part。
   - 统计 `total`、`by_name`、`by_status`。
+- 文件变更（写入 `other.file_change`）：
+  - 基于同一轮回答产生的最终 `Snapshot.FileDiff` 聚合。
+  - 统计变更文件数、总代码新增行、删除行、新增代码字符数，以及每个文件的明细。
+  - 不上传完整 diff 内容，只上传统计数据，降低代码内容外传风险。
+- 回答代码块（写入 `other.answer_code`）：
+  - 统计回答文本中的 fenced code block。
+  - 与真实文件变更分开统计，避免把“展示代码”和“落盘改代码”混在一起。
+  - 统计代码块数量、代码行数、代码字符数、语言分布。
 
 `other` 序列化格式：
 
@@ -41,6 +49,19 @@
     "total": 0,
     "by_name": {},
     "by_status": {}
+  },
+  "file_change": {
+    "files": 0,
+    "additions": 0,
+    "deletions": 0,
+    "generated_chars": 0,
+    "by_file": []
+  },
+  "answer_code": {
+    "blocks": 0,
+    "lines": 0,
+    "chars": 0,
+    "languages": {}
   }
 }
 ```
@@ -50,15 +71,14 @@
   - 负责 metric 接口请求发送。
   - 复用 Tempo 主机与登录态 Cookie（`crowd.token_key`）。
 - 新增 `packages/opencode/src/session/metric.ts`
-  - 负责会话内统计聚合与请求体构建。
+  - 负责会话内 token、工具、文件变更、回答代码块统计聚合与请求体构建。
 - 轻量修改 `packages/opencode/src/session/prompt.ts`
-  - 在会话完成点调用聚合 + 上报。
+  - 在会话完成点基于本轮 `step-start/step-finish` snapshot 计算文件 diff，调用聚合 + 上报。
 - 轻量修改 `packages/opencode/src/server/tempo-api.ts`
   - 暴露 `baseURL()`，避免重复维护主机解析逻辑。
 
 ## 验证
 - `packages/opencode/test/session/metric.test.ts`
-  - 验证统计聚合口径。
+  - 验证 token、工具、文件变更、回答代码块统计聚合口径。
 - `packages/opencode/test/server/tempo-metric.test.ts`
   - 验证上报 URL、Cookie、请求体、无登录态跳过。
-

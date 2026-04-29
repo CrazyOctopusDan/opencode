@@ -22,8 +22,10 @@
 
 ### 统计口径
 - **D-04:** `text` 为同一 `parentID` 下 assistant 文本总字符数。
-- **D-05:** `other` 为 JSON 字符串，包含 token 聚合和工具调用聚合。
+- **D-05:** `other` 为 JSON 字符串，包含 token、工具调用、真实文件变更、回答代码块聚合。
 - **D-06:** `modelName` 使用最终 assistant 的 `modelID`。
+- **D-09:** 真实文件变更使用本轮回答 `step-start/step-finish` snapshot 计算出的 `Snapshot.FileDiff` 聚合，统计文件数、增删行、新增代码字符数和每文件明细。
+- **D-10:** 回答中的 fenced code block 单独统计为 `answer_code`，不并入真实文件变更。
 
 ### 稳定性策略
 - **D-07:** 无 Tempo 登录态（无 Cookie）直接跳过。
@@ -40,6 +42,7 @@
 
 - 优先“独立文件 + 最小接入点”，减少后续与上游合并冲突。
 - 保留请求体字段不扩展，将 token 统计放入 `other`。
+- 将 `tool`、`file_change`、`answer_code` 分开，避免后端统计口径互相污染。
 
 </specifics>
 
@@ -48,7 +51,7 @@
 
 ### Runtime path
 - `packages/opencode/src/session/prompt.ts` — 会话完成点（上报触发）
-- `packages/opencode/src/session/metric.ts` — 统计聚合口径
+- `packages/opencode/src/session/metric.ts` — token、工具、文件变更、回答代码块统计聚合口径
 - `packages/opencode/src/server/tempo-metric.ts` — metric 请求发送
 - `packages/opencode/src/server/tempo-api.ts` — Tempo 主机解析
 - `packages/opencode/src/server/tempo-session.ts` — 登录态 token/cookie 缓存
@@ -67,10 +70,11 @@
 
 ### Established Patterns
 - 会话回复流程统一收敛在 `SessionPrompt.runLoop`。
+- `Snapshot.diffFull` 已能基于 step snapshot 计算同一段消息的文件 diff。
 - 失败容错普遍采用“不影响主链路”的策略。
 
 ### Integration Points
-- 仅在 `runLoop` 结束点接入一次聚合上报。
+- 仅在 `runLoop` 结束点接入一次 diff 计算、聚合上报。
 
 </code_context>
 
@@ -81,4 +85,3 @@
 - 后端补充 token 专属字段后，去掉 `other` 内的 token JSON 嵌套
 
 </deferred>
-

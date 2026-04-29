@@ -162,6 +162,117 @@ describe("session metric", () => {
     expect(other.tool.by_status).toEqual({ completed: 1, error: 1 })
   })
 
+  test("includes file change stats from diffs", () => {
+    const rows = [
+      msg({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "changed files",
+        tokens: { input: 1, output: 1, reasoning: 0, read: 0, write: 0, total: 2 },
+      }),
+    ]
+
+    const body = SessionMetric.build({
+      rows,
+      parent: MessageID.make("u1"),
+      model: "qwen-1",
+      provider: "travelSky",
+      diffs: [
+        {
+          file: "src/new.ts",
+          status: "added",
+          additions: 2,
+          deletions: 0,
+          patch: [
+            "diff --git a/src/new.ts b/src/new.ts",
+            "+++ b/src/new.ts",
+            "+export const foo = 1",
+            "+console.log(foo)",
+          ].join("\n"),
+        },
+        {
+          file: "src/old.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          patch: [
+            "diff --git a/src/old.ts b/src/old.ts",
+            "--- a/src/old.ts",
+            "+++ b/src/old.ts",
+            "-const old = true",
+            "+const next = true",
+          ].join("\n"),
+        },
+      ],
+    })
+
+    const other = JSON.parse(body?.other ?? "{}")
+    expect(other.file_change).toEqual({
+      files: 2,
+      additions: 3,
+      deletions: 1,
+      generated_chars: 53,
+      by_file: [
+        {
+          file: "src/new.ts",
+          status: "added",
+          additions: 2,
+          deletions: 0,
+          generated_chars: 36,
+        },
+        {
+          file: "src/old.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          generated_chars: 17,
+        },
+      ],
+    })
+  })
+
+  test("includes answer code block stats separately from file changes", () => {
+    const rows = [
+      msg({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: ["Here is code:", "```ts", "const foo = 1", "console.log(foo)", "```", "```bash", "echo ok", "```"].join(
+          "\n",
+        ),
+        tokens: { input: 1, output: 1, reasoning: 0, read: 0, write: 0, total: 2 },
+      }),
+    ]
+
+    const body = SessionMetric.build({
+      rows,
+      parent: MessageID.make("u1"),
+      model: "qwen-1",
+      provider: "travelSky",
+    })
+
+    const other = JSON.parse(body?.other ?? "{}")
+    expect(other.answer_code).toEqual({
+      blocks: 2,
+      lines: 3,
+      chars: 36,
+      languages: {
+        ts: 1,
+        bash: 1,
+      },
+    })
+    expect(other.file_change).toEqual({
+      files: 0,
+      additions: 0,
+      deletions: 0,
+      generated_chars: 0,
+      by_file: [],
+    })
+  })
+
   test("skips non-travelsky provider", () => {
     const rows = [
       msg({

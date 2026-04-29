@@ -50,6 +50,7 @@ import { makeRuntime } from "@/effect/run-service"
 import { TaskTool } from "@/tool/task"
 import { TempoMetric } from "@/server/tempo-metric"
 import { SessionMetric } from "./metric"
+import { Snapshot } from "@/snapshot"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -79,6 +80,20 @@ export namespace SessionPrompt {
 
   export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/SessionPrompt") {}
 
+  function marks(input: MessageV2.WithParts[]) {
+    const parts = input.flatMap((row) => row.parts)
+    return {
+      from: parts.find(
+        (part): part is MessageV2.StepStartPart & { snapshot: string } =>
+          part.type === "step-start" && !!part.snapshot,
+      )?.snapshot,
+      to: parts.findLast(
+        (part): part is MessageV2.StepFinishPart & { snapshot: string } =>
+          part.type === "step-finish" && !!part.snapshot,
+      )?.snapshot,
+    }
+  }
+
   export const layer = Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -89,6 +104,7 @@ export namespace SessionPrompt {
       const provider = yield* Provider.Service
       const processor = yield* SessionProcessor.Service
       const compaction = yield* SessionCompaction.Service
+      const snapshot = yield* Snapshot.Service
       const plugin = yield* Plugin.Service
       const commands = yield* Command.Service
       const permission = yield* Permission.Service
@@ -1567,11 +1583,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           const out = yield* lastAssistant(sessionID)
           if (out.info.role === "assistant") {
             const rows = yield* MessageV2.filterCompactedEffect(sessionID)
+            const parent = out.info.parentID
+            const mark = marks(
+              rows.filter(
+                (row) => row.info.id === parent || (row.info.role === "assistant" && row.info.parentID === parent),
+              ),
+            )
+            const diffs = mark.from && mark.to ? yield* snapshot.diffFull(mark.from, mark.to) : []
             const body = SessionMetric.build({
               rows,
               parent: out.info.parentID,
               model: out.info.modelID,
               provider: out.info.providerID,
+              diffs,
             })
             if (body) yield* Effect.promise(() => TempoMetric.send(body))
           }
@@ -1729,6 +1753,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       layer.pipe(
         Layer.provide(SessionStatus.layer),
         Layer.provide(SessionCompaction.defaultLayer),
+        Layer.provide(Snapshot.defaultLayer),
         Layer.provide(SessionProcessor.defaultLayer),
         Layer.provide(Command.defaultLayer),
         Layer.provide(Permission.defaultLayer),

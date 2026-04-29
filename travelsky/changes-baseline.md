@@ -16,24 +16,25 @@
 | `packages/opencode/src/cli/cmd/tui/component/dialog-provider.tsx` | 修改 | provider 弹窗仅显示/处理 TravelSky | 过滤 `provider_next.all` 到 TravelSky | 冲突时保留过滤逻辑，不回退到全 provider 展示 |
 | `packages/opencode/src/server/tempo-api.ts` | 修改 | 复用 Tempo 主机解析给 metric 上报 | 新增 `TempoApi.baseURL()` | 冲突时保留 `baseURL()` 导出，避免 metric 重复维护主机规则 |
 | `packages/opencode/src/server/tempo-metric.ts` | 新增 | 发送回答统计到公司后端 | `POST /ai/data/api/open/code/metric/add`；复用 `TempoSession` cookie | 保留全部；若上游有同名能力，优先保留“同源主机+cookie+超时容错” |
-| `packages/opencode/src/session/metric.ts` | 新增 | 聚合 token/字数/工具调用统计 | 同 `parentID` 多 step assistant 聚合；`other` 内 token+tool JSON | 保留全部；冲突时保留当前统计口径 |
-| `packages/opencode/src/session/prompt.ts` | 修改 | 在完整回答后触发单次上报 | `runLoop` 结束点调用 `SessionMetric.build` + `TempoMetric.send` | 冲突时保留“完成态一次上报”时机，避免多次重复上报 |
+| `packages/opencode/src/session/metric.ts` | 新增 | 聚合 token/字数/工具调用/文件变更/回答代码块统计 | 同 `parentID` 多 step assistant 聚合；`other` 内 `token`、`tool`、`file_change`、`answer_code` JSON | 保留全部；冲突时保留当前统计口径，尤其是工具使用、真实文件变更、回答代码块三类分离 |
+| `packages/opencode/src/session/prompt.ts` | 修改 | 在完整回答后触发单次上报并计算文件变更 | `runLoop` 结束点基于本轮 `step-start/step-finish` snapshot 调用 `Snapshot.diffFull`，再调用 `SessionMetric.build` + `TempoMetric.send` | 冲突时保留“完成态一次上报”时机，避免多次重复上报；保留完成后再取 diff 的顺序 |
 | `packages/opencode/test/cli/tui/thread.test.ts` | 修改 | 适配登录门禁 | mock `ensureLogin` + 断言 `Authorization: Bearer ...` 已注入 `tui` | 保留 mock 与 header 注入断言，防止回归 |
 | `packages/opencode/test/cli/travelsky-auth-store.test.ts` | 新增 | token 存储回归 | 读写与过期场景 | 保留全部 |
 | `packages/opencode/test/cli/travelsky-login.test.ts` | 新增 | 登录接口调用回归 | 成功/失败消息 + `prompt` 的 retry/exit/非TTY 场景 | 保留全部 |
 | `packages/opencode/test/cli/travelsky-bootstrap.test.ts` | 新增 | 登录门禁回归 | 复用 token 与缺 token 登录场景 | 保留全部 |
 | `packages/opencode/test/server/tempo-metric.test.ts` | 新增 | metric 请求发送回归 | URL、Cookie、请求体、无登录态跳过 | 保留全部 |
-| `packages/opencode/test/session/metric.test.ts` | 新增 | 统计聚合口径回归 | token/tool/text 聚合与 provider 过滤 | 保留全部 |
+| `packages/opencode/test/session/metric.test.ts` | 新增 | 统计聚合口径回归 | token/tool/text/file_change/answer_code 聚合与 provider 过滤 | 保留全部 |
 | `travelsky/design.md` | 新增 | 需求实现文档 | Desktop 对齐、CLI 流程、边界说明 | 持续更新 |
-| `travelsky/metric-design.md` | 新增 | metric 需求实现文档 | 上报时机、统计口径、文件落点 | 持续更新 |
-| `travelsky/metric-CONTEXT.md` | 新增 | 需求决策上下文 | phase 边界、决策、冲突参考 | 持续更新 |
+| `travelsky/metric-design.md` | 新增 | metric 需求实现文档 | 上报时机、统计口径、文件变更与回答代码块口径、文件落点 | 持续更新 |
+| `travelsky/metric-CONTEXT.md` | 新增 | 需求决策上下文 | phase 边界、决策、文件变更与回答代码块分类、冲突参考 | 持续更新 |
 | `travelsky/changes-baseline.md` | 新增 | 合并冲突基线 | 本清单 | 持续更新 |
 
 ## 合并冲突处理建议
 - 先按上表定位文件，再按“关键改动点”逐项核对，不按整文件覆盖。
 - 若上游也新增登录链路：保留“接口不变 + CLI 本地 token + TravelSky 单 provider”的约束。
 - 若上游调整 TUI 命令注册：优先保留 `/connect` 与 `/models` 的 TravelSky 固定入口行为。
-- 若上游新增 metric 统计：优先保留“runLoop 完成态单次上报 + `other` 包含 token/tool 聚合”的语义。
+- 若上游新增 metric 统计：优先保留“runLoop 完成态单次上报 + `other` 包含 token/tool/file_change/answer_code 聚合”的语义。
+- 文件修改统计只上传聚合信息，不上传 diff 原文；保留 `file_change` 与 `answer_code` 分离，避免把回答里的示例代码误判为真实文件改动。
 
 ## Desktop 对齐来源（只读基线，非本次修改）
 - `packages/app/src/context/auth.tsx`：Desktop 登录与 token 过期判断
