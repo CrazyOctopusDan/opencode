@@ -6,7 +6,7 @@ describe("tempo api model normalization", () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.method).toBe("POST")
-      expect(init?.body).toBe(JSON.stringify({}))
+      expect(init?.body).toBe(JSON.stringify({ plugin: "open-code" }))
       const header = new Headers(init?.headers).get("Cookie")
       expect(header).toBe("crowd.token_key=test-token")
       return new Response(
