@@ -1,7 +1,7 @@
 import { batch, createMemo } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
-import { Binary } from "@opencode-ai/util/binary"
-import { retry } from "@opencode-ai/util/retry"
+import { Binary } from "@opencode-ai/core/util/binary"
+import { retry } from "@opencode-ai/core/util/retry"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import {
   clearSessionPrefetch,
@@ -13,7 +13,7 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import { SESSION_CACHE_LIMIT, dropSessionCaches, pickSessionCacheEvictions } from "./global-sync/session-cache"
-import { SessionDiagnostic } from "./session-diagnostic"
+import { diffs as list, message as clean } from "@/utils/diffs"
 
 const SKIP_PARTS = new Set(["patch", "step-start", "step-finish"])
 
@@ -307,7 +307,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         input.client.session.messages({ sessionID: input.sessionID, limit: input.limit, before: input.before }),
       )
       const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-      const session = items.map((x) => x.info).sort((a, b) => cmp(a.id, b.id))
+      const session = items.map((x) => clean(x.info)).sort((a, b) => cmp(a.id, b.id))
       const part = items.map((message) => ({ id: message.info.id, part: sortParts(message.parts) }))
       const cursor = messages.response.headers.get("x-next-cursor") ?? undefined
       return {
@@ -341,10 +341,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             clearOptimistic(input.directory, input.sessionID, messageID)
           }
           const [store] = globalSync.child(input.directory, { bootstrap: false })
-          const before = store.message[input.sessionID] ?? []
           const cached = input.mode === "prepend" ? (store.message[input.sessionID] ?? []) : []
           const message = input.mode === "prepend" ? merge(cached, next.session) : next.session
-          const lost = detectOverwrite({ before, after: message })
           batch(() => {
             input.setStore("message", input.sessionID, reconcile(message, { key: "id" }))
             for (const p of next.part) {
@@ -360,14 +358,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               limit: message.length,
               cursor: next.cursor,
               complete: next.complete,
-            })
-            SessionDiagnostic.sync({
-              dir: input.directory,
-              sessionID: input.sessionID,
-              mode: input.mode ?? "replace",
-              before: before.length,
-              after: message.length,
-              lost,
             })
           })
         })
@@ -526,7 +516,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return runInflight(inflightDiff, key, () =>
             retry(() => client.session.diff({ sessionID })).then((diff) => {
               if (!tracked(directory, sessionID)) return
-              setStore("session_diff", sessionID, reconcile(diff.data ?? [], { key: "file" }))
+              setStore("session_diff", sessionID, reconcile(list(diff.data), { key: "file" }))
             }),
           )
         },

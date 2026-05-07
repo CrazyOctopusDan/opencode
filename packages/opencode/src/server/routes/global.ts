@@ -1,18 +1,22 @@
 import { Hono, type Context } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { streamSSE } from "hono/streaming"
+import { Effect } from "effect"
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
 import { SyncEvent } from "@/sync"
 import { GlobalBus } from "@/bus/global"
+import { Bus } from "@/bus"
+import { AppRuntime } from "@/effect/app-runtime"
 import { AsyncQueue } from "@/util/queue"
-import { Instance } from "../../project/instance"
 import { Installation } from "@/installation"
-import { Log } from "../../util/log"
+import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import * as Log from "@opencode-ai/core/util/log"
 import { lazy } from "../../util/lazy"
-import { Config } from "../../config/config"
+import { Config } from "@/config/config"
 import { errors } from "../error"
-import { Flag } from "@/flag/flag"
+import { disposeAllInstancesAndEmitGlobalDisposed } from "../global-lifecycle"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { AuthToken } from "../auth-token"
 import { ModelPolicy } from "@/provider/model-policy"
 import { TempoApi } from "../tempo-api"
@@ -20,14 +24,12 @@ import { TempoSession } from "../tempo-session"
 
 const log = Log.create({ service: "server" })
 
-function localToken(header: string | undefined) {
+function token(header: string | undefined) {
   if (!header?.startsWith("Bearer ")) return
-  const token = header.slice("Bearer ".length).trim()
-  if (!token) return
-  return token
+  const auth = header.slice("Bearer ".length).trim()
+  if (!auth) return
+  return auth
 }
-
-export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
 async function streamEvents(c: Context, subscribe: (q: AsyncQueue<string | null>) => () => void) {
   return streamSSE(c, async (stream) => {
@@ -37,6 +39,7 @@ async function streamEvents(c: Context, subscribe: (q: AsyncQueue<string | null>
     q.push(
       JSON.stringify({
         payload: {
+          id: Bus.createID(),
           type: "server.connected",
           properties: {},
         },
@@ -48,6 +51,7 @@ async function streamEvents(c: Context, subscribe: (q: AsyncQueue<string | null>
       q.push(
         JSON.stringify({
           payload: {
+            id: Bus.createID(),
             type: "server.heartbeat",
             properties: {},
           },
@@ -114,39 +118,30 @@ export const GlobalRoutes = lazy(() =>
       ),
       async (c) => {
         const body = c.req.valid("json")
-        const tempo = TempoApi.enabled()
-        log.warn("global login mode", {
-          tempo,
-          tempo_env: Flag.OPENCODE_TEMPO_ENV,
-          tempo_base_url: Flag.OPENCODE_TEMPO_BASE_URL,
-          tempo_dev_base_url: Flag.OPENCODE_TEMPO_DEV_BASE_URL,
-          tempo_prod_base_url: Flag.OPENCODE_TEMPO_PROD_BASE_URL,
-          tempo_sm2_public_key: !!Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY?.trim(),
-        })
-
-        if (tempo) {
+        if (TempoApi.enabled()) {
           const upstream = await TempoApi.login({
             username: body.username,
             password: body.password,
-          }).catch((error) => {
-            log.error("tempo login failed", { error })
+          }).catch((err) => {
+            log.error("tempo login failed", { error: err })
             return
           })
           if (!upstream) {
-            return c.json({ message: "Company login endpoint unreachable or rejected request. Check build baseURL and network route." }, 401)
+            return c.json(
+              { message: "Company login endpoint unreachable or rejected request. Check build baseURL and network route." },
+              401,
+            )
           }
-          const local = AuthToken.create(body.username)
-          TempoSession.set(local.access_token, {
-            token: upstream.token,
-          })
-          return c.json(local)
+          const auth = AuthToken.create(body.username)
+          TempoSession.set(auth.access_token, { token: upstream.token })
+          return c.json(auth)
         }
         const password = Flag.OPENCODE_SERVER_PASSWORD
-        const expected = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
-        if (password && (body.username !== expected || body.password !== password)) {
+        const user = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+        if (password && (body.username !== user || body.password !== password)) {
           return c.json({ message: "Invalid username or password" }, 401)
         }
-        return c.json(AuthToken.create(body.username || expected))
+        return c.json(AuthToken.create(body.username || user))
       },
     )
     .post(
@@ -167,11 +162,10 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const auth = c.req.header("authorization")
-        const token = auth?.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : ""
-        if (token) {
-          AuthToken.revoke(token)
-          TempoSession.remove(token)
+        const auth = token(c.req.header("authorization"))
+        if (auth) {
+          AuthToken.revoke(auth)
+          TempoSession.remove(auth)
         }
         return c.json({ ok: true })
       },
@@ -194,7 +188,7 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json({ healthy: true, version: Installation.VERSION })
+        return c.json({ healthy: true, version: InstallationVersion })
       },
     )
     .get(
@@ -212,7 +206,9 @@ export const GlobalRoutes = lazy(() =>
                   z
                     .object({
                       directory: z.string(),
-                      payload: BusEvent.payloads(),
+                      project: z.string().optional(),
+                      workspace: z.string().optional(),
+                      payload: z.union([...BusEvent.payloads(), ...SyncEvent.payloads()]),
                     })
                     .meta({
                       ref: "GlobalEvent",
@@ -239,52 +235,6 @@ export const GlobalRoutes = lazy(() =>
       },
     )
     .get(
-      "/sync-event",
-      describeRoute({
-        summary: "Subscribe to global sync events",
-        description: "Get global sync events",
-        operationId: "global.sync-event.subscribe",
-        responses: {
-          200: {
-            description: "Event stream",
-            content: {
-              "text/event-stream": {
-                schema: resolver(
-                  z
-                    .object({
-                      payload: SyncEvent.payloads(),
-                    })
-                    .meta({
-                      ref: "SyncEvent",
-                    }),
-                ),
-              },
-            },
-          },
-        },
-      }),
-      async (c) => {
-        log.info("global sync event connected")
-        c.header("Cache-Control", "no-cache, no-transform")
-        c.header("X-Accel-Buffering", "no")
-        c.header("X-Content-Type-Options", "nosniff")
-        return streamEvents(c, (q) => {
-          return SyncEvent.subscribeAll(({ def, event }) => {
-            // TODO: don't pass def, just pass the type (and it should
-            // be versioned)
-            q.push(
-              JSON.stringify({
-                payload: {
-                  ...event,
-                  type: SyncEvent.versionedType(def.type, def.version),
-                },
-              }),
-            )
-          })
-        })
-      },
-    )
-    .get(
       "/config",
       describeRoute({
         summary: "Get global configuration",
@@ -295,14 +245,14 @@ export const GlobalRoutes = lazy(() =>
             description: "Get global config info",
             content: {
               "application/json": {
-                schema: resolver(Config.Info),
+                schema: resolver(Config.Info.zod),
               },
             },
           },
         },
       }),
       async (c) => {
-        return c.json(await Config.getGlobal())
+        return c.json(await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal())))
       },
     )
     .patch(
@@ -316,30 +266,26 @@ export const GlobalRoutes = lazy(() =>
             description: "Successfully updated global config",
             content: {
               "application/json": {
-                schema: resolver(Config.Info),
+                schema: resolver(Config.Info.zod),
               },
             },
           },
           ...errors(400),
         },
       }),
-      validator("json", Config.Info),
+      validator("json", Config.Info.zod),
       async (c) => {
         const config = c.req.valid("json")
-        const token = localToken(c.req.header("authorization"))
-        const policy = await ModelPolicy.snapshot(false, token)
+        const policy = await ModelPolicy.snapshot(false, token(c.req.header("authorization")))
         if (policy.enabled) {
-          const allowed = new Set(policy.list.map((item) => item.id))
-          const provider = Object.fromEntries(
+          const ids = new Set(policy.list.map((item) => item.id))
+          config.provider = Object.fromEntries(
             Object.entries(config.provider ?? {})
-              .filter(([providerID]) => allowed.has(providerID))
-              .map(([providerID, value]) => {
-                const item = policy.provider(providerID)!
-                const models = Object.fromEntries(
-                  Object.entries(value.models ?? {}).filter(([modelID]) => policy.allowedModel(providerID, modelID)),
-                )
+              .filter(([id]) => ids.has(id))
+              .map(([id, value]) => {
+                const item = policy.provider(id)!
                 return [
-                  providerID,
+                  id,
                   {
                     ...value,
                     name: item.name ?? value.name,
@@ -349,17 +295,23 @@ export const GlobalRoutes = lazy(() =>
                       ...(value.options ?? {}),
                       baseURL: item.baseURL,
                     },
-                    models,
+                    models: Object.fromEntries(
+                      Object.entries(value.models ?? {}).filter(([model]) => policy.allowedModel(id, model)),
+                    ),
                   },
                 ]
               }),
           )
-          config.provider = provider
-          config.enabled_providers = [...allowed]
+          config.enabled_providers = [...ids]
           config.disabled_providers = []
         }
-        const next = await Config.updateGlobal(config)
-        return c.json(next)
+        const result = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.updateGlobal(config)))
+        if (result.changed) {
+          void AppRuntime.runPromise(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true })).catch(
+            () => undefined,
+          )
+        }
+        return c.json(result.info)
       },
     )
     .post(
@@ -380,14 +332,7 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        await Instance.disposeAll()
-        GlobalBus.emit("event", {
-          directory: "global",
-          payload: {
-            type: GlobalDisposedEvent.type,
-            properties: {},
-          },
-        })
+        await AppRuntime.runPromise(disposeAllInstancesAndEmitGlobalDisposed())
         return c.json(true)
       },
     )
@@ -427,25 +372,41 @@ export const GlobalRoutes = lazy(() =>
         }),
       ),
       async (c) => {
-        const method = await Installation.method()
-        if (method === "unknown") {
-          return c.json({ success: false, error: "Unknown installation method" }, 400)
+        const result = await AppRuntime.runPromise(
+          Installation.Service.use((svc) =>
+            Effect.gen(function* () {
+              const method = yield* svc.method()
+              if (method === "unknown") {
+                return { success: false as const, status: 400 as const, error: "Unknown installation method" }
+              }
+
+              const target = c.req.valid("json").target || (yield* svc.latest(method))
+              const result = yield* Effect.catch(
+                svc.upgrade(method, target).pipe(Effect.as({ success: true as const, version: target })),
+                (err) =>
+                  Effect.succeed({
+                    success: false as const,
+                    status: 500 as const,
+                    error: err instanceof Error ? err.message : String(err),
+                  }),
+              )
+              if (!result.success) return result
+              return { ...result, status: 200 as const }
+            }),
+          ),
+        )
+        if (!result.success) {
+          return c.json({ success: false, error: result.error }, result.status)
         }
-        const target = c.req.valid("json").target || (await Installation.latest(method))
-        const result = await Installation.upgrade(method, target)
-          .then(() => ({ success: true as const, version: target }))
-          .catch((e) => ({ success: false as const, error: e instanceof Error ? e.message : String(e) }))
-        if (result.success) {
-          GlobalBus.emit("event", {
-            directory: "global",
-            payload: {
-              type: Installation.Event.Updated.type,
-              properties: { version: target },
-            },
-          })
-          return c.json(result)
-        }
-        return c.json(result, 500)
+        const target = result.version
+        GlobalBus.emit("event", {
+          directory: "global",
+          payload: {
+            type: Installation.Event.Updated.type,
+            properties: { version: target },
+          },
+        })
+        return c.json({ success: true, version: target })
       },
     ),
 )

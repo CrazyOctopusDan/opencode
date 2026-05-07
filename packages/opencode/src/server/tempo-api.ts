@@ -1,4 +1,4 @@
-import { Flag } from "@/flag/flag"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { SM2 } from "@/util/sm2"
 
 const loginPath = "/ai/data/api/auth/login"

@@ -1,5 +1,5 @@
 import z from "zod"
-import { Flag } from "@/flag/flag"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { TempoApi } from "@/server/tempo-api"
 import { TempoSession } from "@/server/tempo-session"
 

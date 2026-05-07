@@ -1,6 +1,6 @@
 import path from "path"
 import { rm } from "fs/promises"
-import { Global } from "@/global"
+import { Global } from "@opencode-ai/core/global"
 import { Filesystem } from "@/util/filesystem"
 
 export type Token = {
@@ -56,4 +56,3 @@ export async function write(input: {
 export async function clear() {
   await rm(FILE, { force: true }).catch(() => undefined)
 }
-
