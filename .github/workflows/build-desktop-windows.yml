@@ -1,9 +1,4 @@
-# Fork 专用：在 GitHub Actions 上构建 Windows Desktop 安装包
-# 与 publish.yml 的 build-tauri（Windows 分支）逻辑对齐
-#
-# 已知问题：bun install 在 monorepo + CI 下存在 linker/cache 死锁 bug
-# (oven-sh/bun #25624, #22846, #25970, #20886)，
-# 使用 --no-cache 绕过有问题的缓存机制。
+# Fork dedicated Windows desktop packaging workflow.
 
 name: Build Desktop (Windows)
 
@@ -31,55 +26,10 @@ jobs:
       - id: version
         run: |
           V=$(node -p "require('./packages/opencode/package.json').version")
-          echo "version=$V" >> $GITHUB_OUTPUT
-
-  build-cli:
-    needs: version
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-tags: true
-
-      - name: Trace build context (CLI)
-        run: |
-          echo "::group::Build context"
-          echo "ref=${{ github.ref }}"
-          echo "sha=${{ github.sha }}"
-          echo "run_id=${{ github.run_id }}"
-          echo "version=${{ needs.version.outputs.version }}"
-          echo "event=${{ github.event_name }}"
-          echo "::endgroup::"
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-
-      - name: Trace toolchain (CLI)
-        run: |
-          echo "::group::Toolchain"
-          uname -a
-          node -v
-          bun -v
-          echo "::endgroup::"
-
-      - name: Install dependencies
-        run: |
-          rm -rf node_modules
-          bun install --no-cache --ignore-scripts --verbose
-
-      - run: ./packages/opencode/script/build.ts --all
-        env:
-          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opencode-cli
-          path: packages/opencode/dist
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
   build-desktop-windows:
-    needs: [version, build-cli]
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -87,81 +37,34 @@ jobs:
         with:
           fetch-tags: true
 
-      - name: Trace build context (Desktop Windows)
-        run: |
-          echo "::group::Build context"
-          echo "ref=${{ github.ref }}"
-          echo "sha=${{ github.sha }}"
-          echo "run_id=${{ github.run_id }}"
-          echo "version=${{ needs.version.outputs.version }}"
-          echo "event=${{ github.event_name }}"
-          echo "::endgroup::"
-        shell: bash
+      - uses: ./.github/actions/setup-bun
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version-file: package.json
-
-      - name: Trace toolchain (Desktop Windows)
-        run: |
-          echo "::group::Toolchain"
-          uname -a || true
-          node -v
-          bun -v
-          rustc -Vv || true
-          cargo -V || true
-          echo "::endgroup::"
-        shell: bash
-
-      - name: Install dependencies
-        run: |
-          rm -rf node_modules
-          bun install --no-cache --ignore-scripts --verbose
-        shell: bash
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/desktop/src-tauri
-          shared-key: x86_64-pc-windows-msvc
+          node-version: "24"
 
       - name: Prepare
-        run: |
-          cd packages/desktop
-          bun ./scripts/prepare.ts
+        run: bun ./scripts/prepare.ts
+        working-directory: packages/desktop
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+          OPENCODE_CHANNEL: dev
           RUST_TARGET: x86_64-pc-windows-msvc
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
 
-      - name: Trace sidecar assets before Tauri build
-        run: |
-          echo "::group::Sidecar files"
-          ls -la packages/desktop/src-tauri/target/opencode-binaries || true
-          find packages/desktop/src-tauri/target/opencode-binaries -maxdepth 4 -type f || true
-          echo "::endgroup::"
-        shell: bash
-
-      - name: Build and upload artifacts
-        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
-        timeout-minutes: 60
-        with:
-          projectPath: packages/desktop
-          uploadWorkflowArtifacts: true
-          args: --target x86_64-pc-windows-msvc --config ./src-tauri/tauri.prod.conf.json --verbose
-          updaterJsonPreferNsis: true
+      - name: Build
+        run: bun run build
+        working-directory: packages/desktop
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          OPENCODE_CHANNEL: dev
 
-      - name: Trace bundled outputs
-        run: |
-          echo "::group::Bundle outputs"
-          find packages/desktop/src-tauri/target/x86_64-pc-windows-msvc -maxdepth 5 -type f \
-            \( -name "*.exe" -o -name "*.msi" -o -name "*.nsis.zip" -o -name "latest.json" \) || true
-          echo "::endgroup::"
-        shell: bash
+      - name: Package
+        run: npx electron-builder --win --publish never --config electron-builder.config.ts
+        working-directory: packages/desktop
+        timeout-minutes: 60
+        env:
+          OPENCODE_CHANNEL: dev
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-desktop-windows-x64
+          path: packages/desktop/dist/*
