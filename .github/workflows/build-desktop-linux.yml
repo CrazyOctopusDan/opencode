@@ -62,21 +62,21 @@ jobs:
         working-directory: packages/desktop
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
-          OPENCODE_CHANNEL: dev
+          OPENCODE_CHANNEL: prod
           RUST_TARGET: x86_64-unknown-linux-gnu
 
       - name: Build
         run: bun run build
         working-directory: packages/desktop
         env:
-          OPENCODE_CHANNEL: dev
+          OPENCODE_CHANNEL: prod
 
       - name: Package
         run: npx electron-builder --linux --publish never --config electron-builder.config.ts
         working-directory: packages/desktop
         timeout-minutes: 60
         env:
-          OPENCODE_CHANNEL: dev
+          OPENCODE_CHANNEL: prod
 
       - uses: actions/upload-artifact@v4
         with:
