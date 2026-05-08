@@ -1070,6 +1070,60 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
   }
 }
 
+type ModelPolicyList = Awaited<ReturnType<typeof ModelPolicy.snapshot>>["list"]
+
+function fromModelPolicyModel(provider: ModelPolicyList[number], model: ModelPolicyList[number]["models"][number]): Model {
+  return {
+    id: ModelID.make(model.id),
+    providerID: ProviderID.make(provider.id),
+    api: {
+      id: model.id,
+      url: model.baseURL ?? provider.baseURL,
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: model.name ?? model.id,
+    family: "",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: model.contextLength ?? 32000, output: model.maxTokens ?? 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "",
+    variants: {},
+  }
+}
+
+export function fromModelPolicy(list: ModelPolicyList) {
+  return Object.fromEntries(
+    list.map((item) => {
+      const id = ProviderID.make(item.id)
+      const urls = [...new Set(item.models.map((model) => model.baseURL ?? item.baseURL))]
+      const key = item.apiKey ?? item.models.find((model) => model.apiKey)?.apiKey
+      return [
+        id,
+        {
+          id,
+          source: "custom",
+          name: item.name ?? item.id,
+          env: [],
+          options: urls.length === 1 && urls[0] ? { baseURL: urls[0] } : {},
+          ...(key ? { key } : {}),
+          models: Object.fromEntries(item.models.map((model) => [model.id, fromModelPolicyModel(item, model)])),
+        },
+      ]
+    }),
+  ) as Record<ProviderID, Info>
+}
+
 const layer: Layer.Layer<
   Service,
   never,

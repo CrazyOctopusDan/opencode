@@ -136,8 +136,9 @@ export const ConfigRoutes = lazy(() =>
       async (c) =>
         jsonRequest("ConfigRoutes.providers", c, function* () {
           const svc = yield* Provider.Service
-          yield* Effect.promise(() => ModelPolicy.snapshot(true, auth(c.req.header("authorization"))))
-          const providers = yield* svc.list()
+          const policy = yield* Effect.promise(() => ModelPolicy.snapshot(true, auth(c.req.header("authorization"))))
+          const connected = yield* svc.list()
+          const providers = policy.enabled ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list)) : connected
           return {
             providers: Object.values(providers),
             default: Provider.defaultModelIDs(providers),

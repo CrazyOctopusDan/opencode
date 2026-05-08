@@ -63,8 +63,9 @@ export const configHandlers = HttpApiBuilder.group(InstanceHttpApi, "config", (h
 
     const providers = Effect.fn("ConfigHttpApi.providers")(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest
-      yield* Effect.promise(() => ModelPolicy.snapshot(true, auth(request.headers.authorization)))
-      const providers = yield* providerSvc.list()
+      const policy = yield* Effect.promise(() => ModelPolicy.snapshot(true, auth(request.headers.authorization)))
+      const connected = yield* providerSvc.list()
+      const providers = policy.enabled ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list)) : connected
       return {
         providers: Object.values(providers),
         default: Provider.defaultModelIDs(providers),

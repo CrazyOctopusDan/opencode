@@ -67,4 +67,39 @@ describe("travelsky bootstrap", () => {
     })
     expect(auth).toBe("Bearer new-token")
   })
+
+  test("accepts travelSky from config providers fallback", async () => {
+    await write({
+      access_token: "stored-token",
+      expires_in: 3600,
+      username: "three",
+    })
+
+    const paths: string[] = []
+    const fetch = async (input: RequestInfo | URL) => {
+      const url = new URL(input.toString())
+      paths.push(url.pathname)
+      if (url.pathname === "/provider") {
+        return new Response(JSON.stringify({ all: [] }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      }
+      return new Response(JSON.stringify({ providers: [{ id: "travelSky", name: "travelSky" }] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    }
+
+    const auth = await ensureLogin({
+      base: "http://local",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    })
+    expect(auth).toBe("Bearer stored-token")
+    expect(paths).toEqual(["/provider", "/config/providers"])
+  })
 })

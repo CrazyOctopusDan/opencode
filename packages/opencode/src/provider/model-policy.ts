@@ -49,12 +49,39 @@ let cache: Snapshot = {
 }
 let expiresAt = 0
 
+function normalizeTravelSky(list: Policy[]) {
+  if (list.length === 0) return list
+  const first = list[0]
+  const models = new Map<string, Policy["models"][number]>()
+  for (const item of list) {
+    for (const model of item.models) {
+      if (models.has(model.id)) continue
+      const apiKey = model.apiKey ?? item.apiKey
+      models.set(model.id, {
+        ...model,
+        baseURL: model.baseURL ?? item.baseURL,
+        ...(apiKey ? { apiKey } : {}),
+      })
+    }
+  }
+  return [
+    {
+      id: "travelSky",
+      name: "travelSky",
+      baseURL: first.baseURL,
+      ...(first.apiKey ? { apiKey: first.apiKey } : {}),
+      models: [...models.values()],
+    },
+  ]
+}
+
 function makeSnapshot(list: Policy[], locked: boolean): Snapshot {
-  const map = new Map(list.map((item) => [item.id, item]))
+  const normalized = normalizeTravelSky(list)
+  const map = new Map(normalized.map((item) => [item.id, item]))
   return {
-    enabled: locked || list.length > 0,
-    locked,
-    list,
+    enabled: normalized.length > 0,
+    locked: locked && normalized.length > 0,
+    list: normalized,
     provider: (id) => map.get(id),
     allowedProvider: (id) => map.has(id),
     allowedModel: (providerID, modelID) => {
@@ -88,6 +115,7 @@ async function fromRemote() {
 async function fromTempo(localToken?: string) {
   if (!TempoApi.enabled()) return
   const auth = TempoSession.get(localToken)
+  if (!auth?.token && !auth?.cookie) return
   return TempoApi.listModels(auth)
 }
 

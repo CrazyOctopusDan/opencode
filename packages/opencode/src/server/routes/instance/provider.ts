@@ -56,7 +56,7 @@ export const ProviderRoutes = lazy(() =>
           }
           const connected = yield* svc.list()
           const providers = policy.enabled
-            ? connected
+            ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list))
             : Object.assign(mapValues(filtered, (x) => Provider.fromModelsDevProvider(x)), connected)
           return {
             all: Object.values(providers),

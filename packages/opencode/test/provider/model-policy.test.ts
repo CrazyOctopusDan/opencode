@@ -1,0 +1,97 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { ModelPolicy } from "../../src/provider/model-policy"
+import { Provider } from "../../src/provider/provider"
+import { ProviderID } from "../../src/provider/schema"
+import { TempoSession } from "../../src/server/tempo-session"
+
+const original = {
+  fetch: globalThis.fetch,
+  base: Flag.OPENCODE_TEMPO_BASE_URL,
+  env: Flag.OPENCODE_TEMPO_ENV,
+}
+
+async function reset() {
+  TempoSession.remove("model-policy-token")
+  TempoSession.remove("empty-policy-token")
+  globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
+  await ModelPolicy.snapshot(true, "missing-policy-token")
+  globalThis.fetch = original.fetch
+  Flag.OPENCODE_TEMPO_BASE_URL = original.base
+  Flag.OPENCODE_TEMPO_ENV = original.env
+}
+
+describe("model policy", () => {
+  afterEach(async () => {
+    await reset()
+  })
+
+  test("normalizes tempo providers into travelSky for cli readiness", async () => {
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+    TempoSession.set("model-policy-token", { token: "upstream-token" })
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("Cookie")).toBe("crowd.token_key=upstream-token")
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: [
+            {
+              id: "openai",
+              name: "OpenAI Compatible",
+              api: "https://tempo.test/openai/v1",
+              models: [
+                {
+                  id: "qwen-coder",
+                  name: "Qwen Coder",
+                  contextLength: 64000,
+                  completionOptions: {
+                    maxTokens: 12000,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      )
+    }) as typeof fetch
+
+    const policy = await ModelPolicy.snapshot(true, "model-policy-token")
+    expect(policy.enabled).toBeTrue()
+    expect(policy.locked).toBeTrue()
+    expect(policy.allowedProvider("travelSky")).toBeTrue()
+    expect(policy.allowedProvider("openai")).toBeFalse()
+    expect(policy.allowedModel("travelSky", "qwen-coder")).toBeTrue()
+    expect(policy.list).toEqual([
+      {
+        id: "travelSky",
+        name: "travelSky",
+        baseURL: "https://tempo.test/openai/v1",
+        models: [
+          {
+            id: "qwen-coder",
+            name: "Qwen Coder",
+            baseURL: "https://tempo.test/openai/v1",
+            contextLength: 64000,
+            maxTokens: 12000,
+          },
+        ],
+      },
+    ])
+
+    const providers = Provider.fromModelPolicy(policy.list)
+    expect(providers[ProviderID.make("travelSky")]?.models["qwen-coder"]?.api.url).toBe(
+      "https://tempo.test/openai/v1",
+    )
+  })
+
+  test("does not lock providers when tempo returns no models", async () => {
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+    TempoSession.set("empty-policy-token", { token: "empty-upstream-token" })
+    globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
+
+    const policy = await ModelPolicy.snapshot(true, "empty-policy-token")
+    expect(policy.enabled).toBeFalse()
+    expect(policy.locked).toBeFalse()
+    expect(policy.list).toEqual([])
+  })
+})
