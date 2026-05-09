@@ -42,23 +42,72 @@ describe("tempo api model normalization", () => {
 
     try {
       const result = await TempoApi.listModels({ token: "test-token" })
-      expect(result).toBeDefined()
-      expect(result?.length).toBe(1)
-      expect(result?.[0]?.id).toBe("travelSky")
-      expect(result?.[0]?.name).toBe("travelSky")
-      expect(result?.[0]?.models.length).toBe(2)
+      expect(result.status).toBe("ok")
+      if (result.status !== "ok") throw new Error("expected ok model list")
+      expect(result.providers.length).toBe(1)
+      expect(result.providers[0]?.id).toBe("travelSky")
+      expect(result.providers[0]?.name).toBe("travelSky")
+      expect(result.providers[0]?.models.length).toBe(2)
 
-      const ids = new Set(result?.[0]?.models.map((item) => item.id))
+      const ids = new Set(result.providers[0]?.models.map((item) => item.id))
       expect(ids.has("qwen3-coder-480b-a35b")).toBeTrue()
       expect(ids.has("qwen3-coder-30b")).toBeTrue()
 
-      const byId = Object.fromEntries(result?.[0]?.models.map((item) => [item.id, item]) ?? [])
+      const byId = Object.fromEntries(result.providers[0]?.models.map((item) => [item.id, item]) ?? [])
       expect(byId["qwen3-coder-480b-a35b"].name).toBe("Qwen3 Coder 480B A35B")
       expect(byId["qwen3-coder-480b-a35b"].baseURL).toBe(
         "https://tempo.travelsky.com.cn/ai_qwen3-coder-480b-a35b/v1",
       )
       expect(byId["qwen3-coder-30b"].name).toBe("Qwen3 Coder 30B")
       expect(byId["qwen3-coder-30b"].baseURL).toBe("https://tempo.travelsky.com.cn/ai_qwen3-coder-30b/v1")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
+describe("tempo api token expiration", () => {
+  test("detects company token expiration payload", () => {
+    expect(
+      TempoApi.expired({
+        success: false,
+        code: 401,
+        message: "token校验失败，失败原因：登录已过期",
+      }),
+    ).toBeTrue()
+    expect(
+      TempoApi.expired({
+        success: false,
+        code: 401,
+        message: "invalid token",
+      }),
+    ).toBeFalse()
+    expect(
+      TempoApi.expired({
+        success: false,
+        code: 500,
+        message: "token校验失败，失败原因：服务异常",
+      }),
+    ).toBeFalse()
+  })
+
+  test("returns expired status when model list reports token expiration", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          code: 401,
+          message: "token校验失败，失败原因：登录已过期",
+        }),
+      )) as typeof fetch
+
+    try {
+      const result = await TempoApi.listModels({ token: "expired-token" })
+      expect(result).toEqual({
+        status: "expired",
+        message: "token校验失败，失败原因：登录已过期",
+      })
     } finally {
       globalThis.fetch = originalFetch
     }

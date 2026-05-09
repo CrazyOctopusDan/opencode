@@ -23,6 +23,11 @@ type PolicyProvider = {
   models: PolicyModel[];
 }
 
+export type TempoModelListResult =
+  | { status: "ok"; providers: PolicyProvider[] }
+  | { status: "expired"; message: string }
+  | { status: "unavailable"; message?: string }
+
 type TempoTrace = {
   at: string
   endpoint: "login" | "model-list"
@@ -270,6 +275,17 @@ export namespace TempoApi {
     return env === "dev" || env === "test" || env === "prod"
   }
 
+  export function expired(payload: unknown) {
+    if (!payload || typeof payload !== "object") return false
+    const item = payload as Record<string, unknown>
+    return (
+      item.success === false &&
+      item.code === 401 &&
+      typeof item.message === "string" &&
+      item.message.startsWith("token校验失败，失败原因")
+    )
+  }
+
   export async function login(input: { username: string; password: string }) {
     const url = `${base()}${loginPath}`
     const enPasswd = SM2.encryptPassword(input.password, Flag.OPENCODE_TEMPO_SM2_PUBLIC_KEY)
@@ -325,7 +341,7 @@ export namespace TempoApi {
     }
   }
 
-  export async function listModels(auth?: { token?: string; cookie?: string }) {
+  export async function listModels(auth?: { token?: string; cookie?: string }): Promise<TempoModelListResult> {
     const headers = new Headers()
     headers.set("Content-Type", "application/json")
     let cookie = ""
@@ -378,8 +394,22 @@ export namespace TempoApi {
           ),
         },
       }
-      if (!res.ok || success === false) return
-      return normalized
+      if (expired(payload)) {
+        return {
+          status: "expired",
+          message: extractMessage(payload) ?? "token校验失败，失败原因未知",
+        }
+      }
+      if (!res.ok || success === false) {
+        return {
+          status: "unavailable",
+          message: extractMessage(payload),
+        }
+      }
+      return {
+        status: "ok",
+        providers: normalized,
+      }
     } catch (error) {
       lastTrace = {
         at: new Date().toISOString(),
@@ -393,7 +423,10 @@ export namespace TempoApi {
         },
         error: error instanceof Error ? error.message : String(error),
       }
-      return
+      return {
+        status: "unavailable",
+        message: error instanceof Error ? error.message : String(error),
+      }
     }
   }
 
