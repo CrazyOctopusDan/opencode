@@ -9,17 +9,34 @@ const original = {
   fetch: globalThis.fetch,
   base: Flag.OPENCODE_TEMPO_BASE_URL,
   env: Flag.OPENCODE_TEMPO_ENV,
+  policy: Flag.OPENCODE_LOCKED_MODEL_POLICY,
 }
+
+const envPolicy = [
+  {
+    id: "env-provider",
+    name: "Env Provider",
+    baseURL: "https://env.test/v1",
+    models: [
+      {
+        id: "env-model",
+        name: "Env Model",
+      },
+    ],
+  },
+]
 
 async function reset() {
   TempoSession.remove("model-policy-token")
   TempoSession.remove("empty-policy-token")
   TempoSession.remove("expired-policy-token")
+  Flag.OPENCODE_LOCKED_MODEL_POLICY = undefined
   globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
   await ModelPolicy.snapshot(true, "missing-policy-token")
   globalThis.fetch = original.fetch
   Flag.OPENCODE_TEMPO_BASE_URL = original.base
   Flag.OPENCODE_TEMPO_ENV = original.env
+  Flag.OPENCODE_LOCKED_MODEL_POLICY = original.policy
 }
 
 describe("model policy", () => {
@@ -114,5 +131,33 @@ describe("model policy", () => {
     expect(policy.expired).toBeTrue()
     expect(policy.expiredMessage).toBe("token校验失败，失败原因：登录已过期")
     expect(policy.list).toEqual([])
+  })
+
+  test("does not cache forced tempo auth expiration over existing policy", async () => {
+    Flag.OPENCODE_LOCKED_MODEL_POLICY = JSON.stringify(envPolicy)
+
+    const cached = await ModelPolicy.snapshot(true, "missing-policy-token")
+    expect(cached.enabled).toBeTrue()
+    expect(cached.expired).toBeFalse()
+    expect(cached.allowedModel("travelSky", "env-model")).toBeTrue()
+
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+    TempoSession.set("expired-policy-token", { token: "expired-upstream-token" })
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          code: 401,
+          message: "token校验失败，失败原因：登录已过期",
+        }),
+      )) as typeof fetch
+
+    const expired = await ModelPolicy.snapshot(true, "expired-policy-token")
+    expect(expired.expired).toBeTrue()
+
+    const policy = await ModelPolicy.snapshot(false, "missing-policy-token")
+    expect(policy.enabled).toBeTrue()
+    expect(policy.expired).toBeFalse()
+    expect(policy.allowedModel("travelSky", "env-model")).toBeTrue()
   })
 })

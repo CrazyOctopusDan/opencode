@@ -157,9 +157,7 @@ export namespace ModelPolicy {
     const locked = TempoApi.enabled() && !!auth?.token
     const tempo = await fromTempo(localToken)
     if (tempo?.status === "expired") {
-      cache = makeExpiredSnapshot(tempo.message)
-      expiresAt = Date.now() + refreshMs()
-      return cache
+      return makeExpiredSnapshot(tempo.message)
     }
     const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
     cache = makeSnapshot(list, locked)
