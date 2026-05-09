@@ -15,6 +15,7 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { useAuth } from "@/context/auth"
+import { TravelSkyAuth } from "@/travelsky/auth"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -36,30 +37,44 @@ const ModelList: Component<{
   const [providerData] = createResource(async () => {
     try {
       const result = await globalSDK.client.provider.list()
-      const data = (result.data ?? { all: [], connected: [], default: {} }) as (typeof result.data & {
-        debug_tempo?: unknown
-      })
-      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
-      const allowed = new Set(enterprise.map((item) => item.id))
-      const connected = new Set(data.connected.filter((id) => allowed.has(id)))
-      const models = enterprise
-        .filter((provider) => connected.has(provider.id))
-        .flatMap((provider) =>
-          Object.values(provider.models).map((model) => ({
-            ...model,
-            provider,
-            name: model.name.replace("(latest)", "").trim(),
-            latest: model.name.includes("(latest)"),
-          })),
-        )
-      return {
-        ok: true as const,
-        models,
+      const buildModelResult = (input: typeof result.data) => {
+        const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data>
+        const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+        const allowed = new Set(enterprise.map((item) => item.id))
+        const connected = new Set(data.connected.filter((id) => allowed.has(id)))
+        return {
+          ok: true as const,
+          models: enterprise
+            .filter((provider) => connected.has(provider.id))
+            .flatMap((provider) =>
+              Object.values(provider.models).map((model) => ({
+                ...model,
+                provider,
+                name: model.name.replace("(latest)", "").trim(),
+                latest: model.name.includes("(latest)"),
+              })),
+            ),
+        }
       }
+      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data> & {
+        debug_tempo?: unknown
+      }
+      if (TravelSkyAuth.expired(data)) {
+        if (await auth.recover()) {
+          const retry = await globalSDK.client.provider.list()
+          return buildModelResult(retry.data)
+        }
+        void auth.logout().then(() => navigate("/login"))
+        return {
+          ok: false as const,
+          models: [],
+        }
+      }
+      return buildModelResult(data)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.toLowerCase().includes("unauthorized")) {
-        void auth.logout().then(() => navigate("/login"))
+        if (!(await auth.recover())) void auth.logout().then(() => navigate("/login"))
       }
       return {
         ok: false as const,
