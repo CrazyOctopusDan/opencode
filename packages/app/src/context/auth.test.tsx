@@ -25,6 +25,17 @@ type Remembered = {
   passwordAvailable: boolean
 }
 
+type SecureCredentialApi = {
+  secureCredentialGet: (
+    key: string,
+  ) => Promise<{ username: string; password: string | null; passwordAvailable: boolean } | null>
+  secureCredentialSet: (
+    key: string,
+    value: { username: string; password: string },
+  ) => Promise<{ passwordSaved: boolean }>
+  secureCredentialDelete: (key: string) => Promise<void>
+}
+
 let initAuth: (() => AuthContext) | undefined
 let platform: Platform
 let remembered: Remembered
@@ -32,6 +43,10 @@ let loginOk: boolean
 let saved: Array<{ username: string; password: string }>
 let credentialClears: number
 let authClears: number
+
+function setApi(api: SecureCredentialApi | undefined) {
+  ;(globalThis.window as typeof globalThis.window & { api?: SecureCredentialApi }).api = api
+}
 
 async function withAuth(fn: (auth: AuthContext) => Promise<void>) {
   await createRoot((dispose) =>
@@ -81,19 +96,6 @@ beforeAll(async () => {
     }),
   }))
 
-  mock.module("@/travelsky/auth", () => ({
-    TravelSkyAuth: {
-      remembered: async () => remembered,
-      save: async (_platform: Platform, input: { username: string; password: string }) => {
-        saved.push(input)
-        return true
-      },
-      clear: async () => {
-        credentialClears++
-      },
-    },
-  }))
-
   await import("./auth")
 })
 
@@ -108,6 +110,23 @@ beforeEach(() => {
   saved = []
   credentialClears = 0
   authClears = 0
+  setApi({
+    async secureCredentialGet() {
+      if (!remembered.remembered) return null
+      return {
+        username: remembered.username,
+        password: remembered.password,
+        passwordAvailable: remembered.passwordAvailable,
+      }
+    },
+    async secureCredentialSet(_key, value) {
+      saved.push(value)
+      return { passwordSaved: true }
+    },
+    async secureCredentialDelete() {
+      credentialClears++
+    },
+  })
   platform = {
     platform: "desktop",
     openLink() {},
@@ -115,10 +134,15 @@ beforeEach(() => {
     back() {},
     forward() {},
     async notify() {},
-    fetch: async () =>
-      loginOk
+    fetch: async (_input, init) => {
+      if (init?.method === "POST" && String(_input).endsWith("/global/logout")) {
+        authClears++
+        return new Response(null, { status: 204 })
+      }
+      return loginOk
         ? new Response(JSON.stringify({ access_token: "token-1", token_type: "Bearer", expires_in: 60 }))
-        : new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 }),
+        : new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 })
+    },
   }
 })
 
@@ -160,7 +184,7 @@ describe("Auth context TravelSky credential recovery", () => {
 
       expect(await auth.recover()).toBeFalse()
       expect(auth.loggedIn()).toBeFalse()
-      expect(authClears).toBe(1)
+      expect(authClears).toBe(2)
     })
   })
 
@@ -177,6 +201,52 @@ describe("Auth context TravelSky credential recovery", () => {
       expect(await auth.recover()).toBeFalse()
       expect(auth.loggedIn()).toBeFalse()
       expect(authClears).toBe(1)
+    })
+  })
+
+  test("stale recover failure does not clear newer manual login", async () => {
+    remembered = {
+      username: "saved-user",
+      password: "saved-password",
+      remembered: true,
+      passwordAvailable: true,
+    }
+
+    let startSavedLogin: (() => void) | undefined
+    let finishSavedLogin: (() => void) | undefined
+    const savedLoginStarted = new Promise<void>((resolve) => {
+      startSavedLogin = resolve
+    })
+    const savedLoginFinished = new Promise<void>((resolve) => {
+      finishSavedLogin = resolve
+    })
+
+    platform.fetch = async (input, init) => {
+      if (init?.method === "POST" && String(input).endsWith("/global/logout")) {
+        authClears++
+        return new Response(null, { status: 204 })
+      }
+      const body = JSON.parse(String(init?.body)) as { username: string }
+      if (body.username === "saved-user") {
+        startSavedLogin?.()
+        await savedLoginFinished
+        return new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 })
+      }
+      return new Response(JSON.stringify({ access_token: "manual-token", token_type: "Bearer", expires_in: 60 }))
+    }
+
+    await withAuth(async (auth) => {
+      const recovery = auth.recover()
+      await savedLoginStarted
+
+      await auth.login("manual-user", "manual-password", true)
+      finishSavedLogin?.()
+
+      expect(await recovery).toBeFalse()
+      expect(auth.loggedIn()).toBeTrue()
+      expect(auth.username()).toBe("manual-user")
+      expect(auth.token()).toBe("manual-token")
+      expect(authClears).toBe(0)
     })
   })
 })

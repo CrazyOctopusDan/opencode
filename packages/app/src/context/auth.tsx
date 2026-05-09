@@ -44,6 +44,7 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
         expiresAt: 0,
       }),
     )
+    let authOperation = 0
 
     const valid = () => {
       if (!store.accessToken) return false
@@ -56,9 +57,10 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       return store.accessToken
     }
 
-    const clear = async () => {
+    const clearFor = async (operation: number) => {
       const auth = token()
       const conn = server.current
+      if (operation !== authOperation) return false
       setStore({
         accessToken: "",
         username: "",
@@ -73,9 +75,15 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
           Authorization: `Bearer ${auth}`,
         },
       }).catch(() => undefined)
+      return true
     }
 
-    const login = async (username: string, password: string, remember = false) => {
+    const clear = async () => {
+      authOperation++
+      await clearFor(authOperation)
+    }
+
+    const loginFor = async (operation: number, username: string, password: string, remember = false) => {
       const conn = server.current
       if (!conn) throw new Error("Server not available")
       const fetcher = platform.fetch ?? globalThis.fetch
@@ -98,16 +106,24 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       }
       const data = (await res.json()) as LoginResult
       const expiresAt = Date.now() + Math.max(1, data.expires_in) * 1000
+      if (operation !== authOperation) return false
       setStore({
         accessToken: data.access_token,
         username,
         expiresAt,
       })
+      if (operation !== authOperation) return false
       if (remember) {
         await TravelSkyAuth.save(platform, { username, password })
-        return
+        return operation === authOperation
       }
       await TravelSkyAuth.clear(platform)
+      return operation === authOperation
+    }
+
+    const login = async (username: string, password: string, remember = false) => {
+      authOperation++
+      await loginFor(authOperation, username, password, remember)
     }
 
     return {
@@ -117,20 +133,22 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       loggedIn: valid,
       login,
       async recover() {
+        authOperation++
+        const operation = authOperation
         const saved = await TravelSkyAuth.remembered(platform)
+        if (operation !== authOperation) return false
         if (!saved.username || !saved.passwordAvailable || !saved.password) {
-          await clear()
+          await clearFor(operation)
           return false
         }
-        const recovered = await login(saved.username, saved.password, true)
-          .then(() => true)
+        const recovered = await loginFor(operation, saved.username, saved.password, true)
           .catch(async () => {
-            await clear()
+            await clearFor(operation)
             return false
           })
         if (!recovered) return false
         if (valid()) return true
-        await clear()
+        await clearFor(operation)
         return false
       },
       logout: clear,
