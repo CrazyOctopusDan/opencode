@@ -49,7 +49,15 @@ export namespace TempoMetric {
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(1_500),
     })
-      .then((res) => res.ok)
+      .then(async (res) => {
+        if (!res.ok) return false
+        const payload = await res.json().catch(() => undefined)
+        if (TempoApi.expired(payload)) return false
+        if (payload && typeof payload === "object" && (payload as Record<string, unknown>).success === false) {
+          return false
+        }
+        return true
+      })
       .catch((err) => {
         log.warn("metric send failed", {
           error: error(err),
