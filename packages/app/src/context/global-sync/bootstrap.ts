@@ -20,6 +20,7 @@ import { cmp, normalizeAgentList, normalizeProviderList } from "./utils"
 import { formatServerError } from "@/utils/server-errors"
 import { QueryClient, queryOptions } from "@tanstack/solid-query"
 import { loadMcpQuery } from "../global-sync"
+import { TravelSkyAuth } from "@/travelsky/auth"
 
 type GlobalStore = {
   ready: boolean
@@ -58,6 +59,12 @@ function errors(list: PromiseSettledResult<unknown>[]) {
 }
 
 const providerRev = new Map<string, number>()
+
+const emptyProviderList = { all: [], connected: [], default: {} } satisfies ProviderListResponse
+
+type ProviderAuthRecovery = {
+  recoverProviderAuth?: () => Promise<OpencodeClient | undefined>
+}
 
 export function clearProviderRev(directory: string) {
   providerRev.delete(directory)
@@ -111,10 +118,16 @@ export async function bootstrapGlobal(input: {
   formatMoreCount: (count: number) => string
   setGlobalStore: SetStoreFunction<GlobalStore>
   queryClient: QueryClient
+  recoverProviderAuth?: () => Promise<OpencodeClient | undefined>
 }) {
   const slow = [
     () => input.queryClient.fetchQuery(loadGlobalConfigQuery(input.globalSDK)),
-    () => input.queryClient.fetchQuery(loadProvidersQuery(null, input.globalSDK)),
+    () =>
+      input.queryClient.fetchQuery(
+        loadProvidersQuery(null, input.globalSDK, {
+          recoverProviderAuth: input.recoverProviderAuth,
+        }),
+      ),
     () => input.queryClient.fetchQuery(loadPathQuery(null, input.globalSDK)),
     () =>
       input.queryClient
@@ -178,10 +191,28 @@ function warmSessions(input: {
   ).then(() => undefined)
 }
 
-export const loadProvidersQuery = (directory: string | null, sdk: OpencodeClient) =>
+async function listProviders(sdk: OpencodeClient) {
+  return sdk.provider.list().then((x) => normalizeProviderList(x.data ?? emptyProviderList))
+}
+
+export async function listProvidersWithRecovery(sdk: OpencodeClient, input?: ProviderAuthRecovery) {
+  const data = await listProviders(sdk).catch(async (err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err)
+    if (!message.toLowerCase().includes("unauthorized")) throw err
+    const recovered = await input?.recoverProviderAuth?.()
+    if (!recovered) return emptyProviderList
+    return listProviders(recovered)
+  })
+  if (!TravelSkyAuth.expired(data)) return data
+  const recovered = await input?.recoverProviderAuth?.()
+  if (!recovered) return emptyProviderList
+  return listProviders(recovered)
+}
+
+export const loadProvidersQuery = (directory: string | null, sdk: OpencodeClient, input?: ProviderAuthRecovery) =>
   queryOptions({
     queryKey: [directory, "providers"],
-    queryFn: () => retry(() => sdk.provider.list().then((x) => normalizeProviderList(x.data!))),
+    queryFn: () => retry(() => listProvidersWithRecovery(sdk, input)),
   })
 
 export const loadAgentsQuery = (directory: string | null, sdk: OpencodeClient) =>
@@ -211,6 +242,7 @@ export async function bootstrapDirectory(input: {
     provider: ProviderListResponse
   }
   queryClient: QueryClient
+  recoverProviderAuth?: () => Promise<OpencodeClient | undefined>
 }) {
   const loading = input.store.status !== "complete"
   const seededProject = projectID(input.directory, input.global.project)
@@ -306,15 +338,21 @@ export async function bootstrapDirectory(input: {
       () => Promise.resolve(input.loadSessions(input.directory)),
       () => input.queryClient.fetchQuery(loadMcpQuery(input.directory, input.sdk)),
       () =>
-        input.queryClient.fetchQuery(loadProvidersQuery(input.directory, input.sdk)).catch((err) => {
-          const project = getFilename(input.directory)
-          showToast({
-            variant: "error",
-            title: input.translate("toast.project.reloadFailed.title", { project }),
-            description: formatServerError(err, input.translate),
-          })
-        }),
-    ].filter(Boolean) as (() => Promise<any>)[]
+        input.queryClient
+          .fetchQuery(
+            loadProvidersQuery(input.directory, input.sdk, {
+              recoverProviderAuth: input.recoverProviderAuth,
+            }),
+          )
+          .catch((err) => {
+            const project = getFilename(input.directory)
+            showToast({
+              variant: "error",
+              title: input.translate("toast.project.reloadFailed.title", { project }),
+              description: formatServerError(err, input.translate),
+            })
+          }),
+    ].filter(Boolean) as Array<() => Promise<unknown>>
 
     await waitForPaint()
     const slowErrs = errors(await runAll(slow))

@@ -91,6 +91,16 @@ describe("tempo api token expiration", () => {
     ).toBeFalse()
   })
 
+  test("accepts string 401 code in company token expiration payload", () => {
+    expect(
+      TempoApi.expired({
+        success: false,
+        code: "401",
+        message: "token校验失败，失败原因：登录已过期",
+      }),
+    ).toBeTrue()
+  })
+
   test("returns expired status when model list reports token expiration", async () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async () =>

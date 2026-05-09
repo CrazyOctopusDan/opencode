@@ -1224,6 +1224,7 @@ const layer: Layer.Layer<
 
         // now read config providers - includes any modifications from plugin config() hook
         const configProviders = Object.entries(cfg.provider ?? {}).filter(([id]) => {
+          if (policy.expired) return false
           if (!policy.enabled) return true
           return policy.allowedProvider(id)
         })
@@ -1231,6 +1232,7 @@ const layer: Layer.Layer<
         const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
 
         function isProviderAllowed(providerID: ProviderID): boolean {
+          if (policy.expired) return false
           if (policy.enabled && !policy.allowedProvider(providerID)) return false
           if (enabled && !enabled.has(providerID)) return false
           if (disabled.has(providerID)) return false

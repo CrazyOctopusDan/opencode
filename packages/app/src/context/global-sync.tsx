@@ -13,6 +13,7 @@ import { batch, createContext, getOwner, onCleanup, onMount, type ParentProps, u
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import type { InitError } from "../pages/error"
+import { useAuth } from "./auth"
 import { useGlobalSDK } from "./global-sdk"
 import {
   bootstrapDirectory,
@@ -68,6 +69,7 @@ export const loadLspQuery = (directory: string, sdk: OpencodeClient) =>
 
 function createGlobalSync() {
   const globalSDK = useGlobalSDK()
+  const auth = useAuth()
   const language = useLanguage()
   const owner = getOwner()
   if (!owner) throw new Error("GlobalSync must be created within owner")
@@ -77,10 +79,20 @@ function createGlobalSync() {
   const sessionLoads = new Map<string, Promise<void>>()
   const sessionMeta = new Map<string, { limit: number }>()
 
+  const recoverProviderAuth = async (directory: string | null) => {
+    if (!(await auth.recover())) return
+    return globalSDK.createClient({
+      ...(directory ? { directory } : {}),
+      throwOnError: true,
+    })
+  }
+
   const [configQuery, providerQuery, pathQuery] = useQueries(() => ({
     queries: [
       loadGlobalConfigQuery(globalSDK.client),
-      loadProvidersQuery(null, globalSDK.client),
+      loadProvidersQuery(null, globalSDK.client, {
+        recoverProviderAuth: () => recoverProviderAuth(null),
+      }),
       loadPathQuery(null, globalSDK.client),
     ],
   }))
@@ -144,6 +156,7 @@ function createGlobalSync() {
         formatMoreCount: (count) => language.t("common.moreCountSuffix", { count }),
         setGlobalStore: setBootStore,
         queryClient,
+        recoverProviderAuth: () => recoverProviderAuth(null),
       })
       bootedAt = Date.now()
       return bootedAt
@@ -210,6 +223,7 @@ function createGlobalSync() {
     },
     translate: language.t,
     getSdk: sdkFor,
+    recoverProviderAuth,
     global: {
       provider: globalStore.provider,
     },
@@ -319,6 +333,7 @@ function createGlobalSync() {
         loadSessions,
         translate: language.t,
         queryClient,
+        recoverProviderAuth: () => recoverProviderAuth(directory),
       })
     })
 

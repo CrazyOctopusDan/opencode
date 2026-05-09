@@ -1,6 +1,26 @@
 import { describe, expect, test } from "bun:test"
+import type { OpencodeClient, ProviderListResponse } from "@opencode-ai/sdk/v2/client"
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
+import { listProvidersWithRecovery } from "./global-sync/bootstrap"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
+
+const providerList = (patch?: Record<string, unknown>) =>
+  ({
+    all: [],
+    connected: [],
+    default: {},
+    ...patch,
+  }) as ProviderListResponse
+
+const providerSdk = (data: ProviderListResponse | Error) =>
+  ({
+    provider: {
+      list: async () => {
+        if (data instanceof Error) throw data
+        return { data }
+      },
+    },
+  }) as unknown as OpencodeClient
 
 describe("pickDirectoriesToEvict", () => {
   test("keeps pinned stores and evicts idle stores", () => {
@@ -60,6 +80,69 @@ describe("loadRootSessionsWithFallback", () => {
       { directory: "dir", roots: true, limit: 25 },
       { directory: "dir", roots: true },
     ])
+  })
+})
+
+describe("listProvidersWithRecovery", () => {
+  test("recovers and retries provider list when Tempo auth is expired", async () => {
+    const calls: string[] = []
+    const expired = providerSdk(
+      providerList({
+        debug_tempo: {
+          auth_expired: true,
+          message: "token校验失败，失败原因：登录已过期",
+        },
+      }),
+    )
+    const recovered = providerSdk(
+      providerList({
+        all: [
+          {
+            id: "travelSky",
+            name: "travelSky",
+            models: {
+              qwen: {
+                id: "qwen",
+                name: "Qwen",
+                release_date: "2026-01-01",
+              },
+            },
+          },
+        ],
+        connected: ["travelSky"],
+        default: {
+          travelSky: "qwen",
+        },
+      }),
+    )
+
+    const result = await listProvidersWithRecovery(expired, {
+      recoverProviderAuth: async () => {
+        calls.push("recover")
+        return recovered
+      },
+    })
+
+    expect(calls).toEqual(["recover"])
+    expect(result.connected).toEqual(["travelSky"])
+    expect(result.all[0]?.models.qwen?.status).toBeUndefined()
+  })
+
+  test("returns an empty provider list when expired auth cannot recover", async () => {
+    const result = await listProvidersWithRecovery(
+      providerSdk(
+        providerList({
+          debug_tempo: {
+            auth_expired: true,
+          },
+        }),
+      ),
+      {
+        recoverProviderAuth: async () => undefined,
+      },
+    )
+
+    expect(result).toEqual(providerList())
   })
 })
 

@@ -3,7 +3,6 @@ import { Component, ComponentProps, createMemo, createResource, JSX, Show, Valid
 import { createStore } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { useLocal } from "@/context/local"
-import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
@@ -15,7 +14,10 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { useAuth } from "@/context/auth"
-import { TravelSkyAuth } from "@/travelsky/auth"
+import { useSDK } from "@/context/sdk"
+import { loadProvidersQuery } from "@/context/global-sync/bootstrap"
+import { useQueryClient } from "@tanstack/solid-query"
+import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -30,14 +32,14 @@ const ModelList: Component<{
   model?: ModelState
 }> = (props) => {
   const model = props.model ?? useLocal().model
-  const globalSDK = useGlobalSDK()
+  const sdk = useSDK()
+  const queryClient = useQueryClient()
   const language = useLanguage()
   const auth = useAuth()
   const navigate = useNavigate()
   const [providerData] = createResource(async () => {
-    type ProviderListData = Awaited<ReturnType<typeof globalSDK.client.provider.list>>["data"]
-    const buildModelResult = (input: ProviderListData) => {
-      const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData>
+    const buildModelResult = (input: ProviderListResponse) => {
+      const data = input ?? { all: [], connected: [], default: {} }
       const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
       const allowed = new Set(enterprise.map((item) => item.id))
       const connected = new Set(data.connected.filter((id) => allowed.has(id)))
@@ -64,30 +66,19 @@ const ModelList: Component<{
         provider: { id: string; name: string }
       }[],
     })
-    const retryRecoveredProviderList = () => globalSDK.createClient({ throwOnError: true }).provider.list()
     try {
-      const result = await globalSDK.client.provider.list()
-      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData> & {
-        debug_tempo?: unknown
-      }
-      if (TravelSkyAuth.expired(data)) {
-        if (await auth.recover()) {
-          const retry = await retryRecoveredProviderList().catch(() => undefined)
-          return retry ? buildModelResult(retry.data) : buildFailedResult()
-        }
-        void auth.logout().then(() => navigate("/login"))
-        return buildFailedResult()
-      }
+      const data = await queryClient.fetchQuery(
+        loadProvidersQuery(sdk.directory, sdk.client, {
+          recoverProviderAuth: async () => {
+            if (await auth.recover()) {
+              return sdk.createClient({ directory: sdk.directory, throwOnError: true })
+            }
+            void auth.logout().then(() => navigate("/login"))
+          },
+        }),
+      )
       return buildModelResult(data)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (message.toLowerCase().includes("unauthorized")) {
-        if (await auth.recover()) {
-          const retry = await retryRecoveredProviderList().catch(() => undefined)
-          return retry ? buildModelResult(retry.data) : buildFailedResult()
-        }
-        void auth.logout().then(() => navigate("/login"))
-      }
       return buildFailedResult()
     }
   })

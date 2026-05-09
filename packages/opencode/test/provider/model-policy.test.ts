@@ -127,7 +127,7 @@ describe("model policy", () => {
 
     const policy = await ModelPolicy.snapshot(true, "expired-policy-token")
     expect(policy.enabled).toBeFalse()
-    expect(policy.locked).toBeFalse()
+    expect(policy.locked).toBeTrue()
     expect(policy.expired).toBeTrue()
     expect(policy.expiredMessage).toBe("token校验失败，失败原因：登录已过期")
     expect(policy.list).toEqual([])

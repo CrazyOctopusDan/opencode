@@ -27,6 +27,7 @@ export function createChildStoreManager(input: {
   onDispose: (directory: string) => void
   translate: (key: string, vars?: Record<string, string | number>) => string
   getSdk: (directory: string) => OpencodeClient
+  recoverProviderAuth?: (directory: string) => Promise<OpencodeClient | undefined>
   global: {
     provider: ProviderListResponse
   }
@@ -181,7 +182,9 @@ export function createChildStoreManager(input: {
               loadPathQuery(key, sdk),
               loadMcpQuery(key, sdk),
               loadLspQuery(key, sdk),
-              loadProvidersQuery(key, sdk),
+              loadProvidersQuery(key, sdk, {
+                recoverProviderAuth: async () => input.recoverProviderAuth?.(directory),
+              }),
             ],
           }))
 

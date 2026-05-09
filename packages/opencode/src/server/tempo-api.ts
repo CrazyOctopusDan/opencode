@@ -280,7 +280,7 @@ export namespace TempoApi {
     const item = payload as Record<string, unknown>
     return (
       item.success === false &&
-      item.code === 401 &&
+      (item.code === 401 || item.code === "401") &&
       typeof item.message === "string" &&
       item.message.startsWith("token校验失败，失败原因")
     )

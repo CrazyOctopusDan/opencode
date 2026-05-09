@@ -96,10 +96,10 @@ function makeSnapshot(list: Policy[], locked: boolean): Snapshot {
   }
 }
 
-function makeExpiredSnapshot(message: string): Snapshot {
+function makeExpiredSnapshot(message: string, locked: boolean): Snapshot {
   return {
     enabled: false,
-    locked: false,
+    locked,
     expired: true,
     expiredMessage: message,
     list: [],
@@ -157,7 +157,7 @@ export namespace ModelPolicy {
     const locked = TempoApi.enabled() && !!auth?.token
     const tempo = await fromTempo(localToken)
     if (tempo?.status === "expired") {
-      return makeExpiredSnapshot(tempo.message)
+      return makeExpiredSnapshot(tempo.message, locked)
     }
     const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
     cache = makeSnapshot(list, locked)
