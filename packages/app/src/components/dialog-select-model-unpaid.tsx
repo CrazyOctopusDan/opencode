@@ -29,72 +29,72 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
   const auth = useAuth()
   const [providerData] = createResource(async () => {
     const started = Date.now()
+    type ProviderListData = Awaited<ReturnType<typeof globalSDK.client.provider.list>>["data"]
+    const buildModelResult = (input: ProviderListData) => {
+      const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData> & {
+        debug_tempo?: unknown
+      }
+      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+      const allowed = new Set(enterprise.map((item) => item.id))
+      const connected = new Set(data.connected.filter((id) => allowed.has(id)))
+      return {
+        ok: true as const,
+        latency: Date.now() - started,
+        providers: enterprise.length,
+        connected: [...connected].length,
+        models: enterprise
+          .filter((provider) => connected.has(provider.id))
+          .flatMap((provider) =>
+            Object.values(provider.models).map((model) => ({
+              ...model,
+              provider,
+              name: model.name.replace("(latest)", "").trim(),
+              latest: model.name.includes("(latest)"),
+            })),
+          ),
+        providerIDs: enterprise.map((item) => item.id),
+        debug_tempo: data.debug_tempo,
+      }
+    }
+    const buildFailedResult = (error?: string) => ({
+      ok: false as const,
+      latency: Date.now() - started,
+      providers: 0,
+      connected: 0,
+      models: [] as {
+        id: string
+        name: string
+        latest: boolean
+        provider: { id: string; name: string }
+      }[],
+      providerIDs: [] as string[],
+      error,
+    })
+    const retryRecoveredProviderList = () => globalSDK.createClient({ throwOnError: true }).provider.list()
     try {
       const result = await globalSDK.client.provider.list()
-      const buildModelResult = (input: typeof result.data) => {
-        const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data> & {
-          debug_tempo?: unknown
-        }
-        const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
-        const allowed = new Set(enterprise.map((item) => item.id))
-        const connected = new Set(data.connected.filter((id) => allowed.has(id)))
-        return {
-          ok: true as const,
-          latency: Date.now() - started,
-          providers: enterprise.length,
-          connected: [...connected].length,
-          models: enterprise
-            .filter((provider) => connected.has(provider.id))
-            .flatMap((provider) =>
-              Object.values(provider.models).map((model) => ({
-                ...model,
-                provider,
-                name: model.name.replace("(latest)", "").trim(),
-                latest: model.name.includes("(latest)"),
-              })),
-            ),
-          providerIDs: enterprise.map((item) => item.id),
-          debug_tempo: data.debug_tempo,
-        }
-      }
-      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data> & {
+      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData> & {
         debug_tempo?: unknown
       }
       if (TravelSkyAuth.expired(data)) {
         if (await auth.recover()) {
-          const retry = await globalSDK.client.provider.list()
-          return buildModelResult(retry.data)
+          const retry = await retryRecoveredProviderList().catch(() => undefined)
+          return retry ? buildModelResult(retry.data) : buildFailedResult()
         }
         void auth.logout().then(() => navigate("/login"))
-        return {
-          ok: false as const,
-          latency: Date.now() - started,
-          providers: 0,
-          connected: 0,
-          models: [],
-          providerIDs: [],
-        }
+        return buildFailedResult()
       }
       return buildModelResult(data)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.toLowerCase().includes("unauthorized")) {
-        if (!(await auth.recover())) void auth.logout().then(() => navigate("/login"))
+        if (await auth.recover()) {
+          const retry = await retryRecoveredProviderList().catch(() => undefined)
+          return retry ? buildModelResult(retry.data) : buildFailedResult(message)
+        }
+        void auth.logout().then(() => navigate("/login"))
       }
-      return {
-        ok: false as const,
-        latency: Date.now() - started,
-        providers: 0,
-        connected: 0,
-        models: [] as {
-          id: string
-          name: string
-          latest: boolean
-          provider: { id: string; name: string }
-        }[],
-        providerIDs: [] as string[],
-        error: message,
-      }
+      return buildFailedResult(message)
     }
   })
   const models = createMemo(() => {

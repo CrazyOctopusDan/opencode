@@ -35,56 +35,60 @@ const ModelList: Component<{
   const auth = useAuth()
   const navigate = useNavigate()
   const [providerData] = createResource(async () => {
+    type ProviderListData = Awaited<ReturnType<typeof globalSDK.client.provider.list>>["data"]
+    const buildModelResult = (input: ProviderListData) => {
+      const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData>
+      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+      const allowed = new Set(enterprise.map((item) => item.id))
+      const connected = new Set(data.connected.filter((id) => allowed.has(id)))
+      return {
+        ok: true as const,
+        models: enterprise
+          .filter((provider) => connected.has(provider.id))
+          .flatMap((provider) =>
+            Object.values(provider.models).map((model) => ({
+              ...model,
+              provider,
+              name: model.name.replace("(latest)", "").trim(),
+              latest: model.name.includes("(latest)"),
+            })),
+          ),
+      }
+    }
+    const buildFailedResult = () => ({
+      ok: false as const,
+      models: [] as {
+        id: string
+        name: string
+        latest: boolean
+        provider: { id: string; name: string }
+      }[],
+    })
+    const retryRecoveredProviderList = () => globalSDK.createClient({ throwOnError: true }).provider.list()
     try {
       const result = await globalSDK.client.provider.list()
-      const buildModelResult = (input: typeof result.data) => {
-        const data = (input ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data>
-        const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
-        const allowed = new Set(enterprise.map((item) => item.id))
-        const connected = new Set(data.connected.filter((id) => allowed.has(id)))
-        return {
-          ok: true as const,
-          models: enterprise
-            .filter((provider) => connected.has(provider.id))
-            .flatMap((provider) =>
-              Object.values(provider.models).map((model) => ({
-                ...model,
-                provider,
-                name: model.name.replace("(latest)", "").trim(),
-                latest: model.name.includes("(latest)"),
-              })),
-            ),
-        }
-      }
-      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<typeof result.data> & {
+      const data = (result.data ?? { all: [], connected: [], default: {} }) as NonNullable<ProviderListData> & {
         debug_tempo?: unknown
       }
       if (TravelSkyAuth.expired(data)) {
         if (await auth.recover()) {
-          const retry = await globalSDK.client.provider.list()
-          return buildModelResult(retry.data)
+          const retry = await retryRecoveredProviderList().catch(() => undefined)
+          return retry ? buildModelResult(retry.data) : buildFailedResult()
         }
         void auth.logout().then(() => navigate("/login"))
-        return {
-          ok: false as const,
-          models: [],
-        }
+        return buildFailedResult()
       }
       return buildModelResult(data)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.toLowerCase().includes("unauthorized")) {
-        if (!(await auth.recover())) void auth.logout().then(() => navigate("/login"))
+        if (await auth.recover()) {
+          const retry = await retryRecoveredProviderList().catch(() => undefined)
+          return retry ? buildModelResult(retry.data) : buildFailedResult()
+        }
+        void auth.logout().then(() => navigate("/login"))
       }
-      return {
-        ok: false as const,
-        models: [] as {
-          id: string
-          name: string
-          latest: boolean
-          provider: { id: string; name: string }
-        }[],
-      }
+      return buildFailedResult()
     }
   })
 
