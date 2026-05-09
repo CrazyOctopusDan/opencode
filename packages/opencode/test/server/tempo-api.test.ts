@@ -100,7 +100,7 @@ describe("tempo api token expiration", () => {
           code: 401,
           message: "token校验失败，失败原因：登录已过期",
         }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     try {
       const result = await TempoApi.listModels({ token: "expired-token" })

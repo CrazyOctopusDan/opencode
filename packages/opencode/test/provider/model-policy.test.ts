@@ -123,7 +123,7 @@ describe("model policy", () => {
           code: 401,
           message: "token校验失败，失败原因：登录已过期",
         }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     const policy = await ModelPolicy.snapshot(true, "expired-policy-token")
     expect(policy.enabled).toBeFalse()
@@ -150,7 +150,7 @@ describe("model policy", () => {
           code: 401,
           message: "token校验失败，失败原因：登录已过期",
         }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     const expired = await ModelPolicy.snapshot(true, "expired-policy-token")
     expect(expired.expired).toBeTrue()

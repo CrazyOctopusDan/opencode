@@ -106,7 +106,7 @@ beforeEach(() => {
     back() {},
     forward() {},
     async notify() {},
-    fetch: async (_input, init) => {
+    fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST" && String(_input).endsWith("/global/logout")) {
         authClears++
         return new Response(null, { status: 204 })
@@ -114,7 +114,7 @@ beforeEach(() => {
       return loginOk
         ? new Response(JSON.stringify({ access_token: "token-1", token_type: "Bearer", expires_in: 60 }))
         : new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 })
-    },
+    }) as unknown as typeof fetch,
   }
 })
 
@@ -197,7 +197,7 @@ describe("Auth context TravelSky credential recovery", () => {
       finishSavedLogin = resolve
     })
 
-    platform.fetch = async (input, init) => {
+    platform.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST" && String(input).endsWith("/global/logout")) {
         authClears++
         return new Response(null, { status: 204 })
@@ -209,7 +209,7 @@ describe("Auth context TravelSky credential recovery", () => {
         return new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 })
       }
       return new Response(JSON.stringify({ access_token: "manual-token", token_type: "Bearer", expires_in: 60 }))
-    }
+    }) as unknown as typeof fetch
 
     await withAuth(async (auth) => {
       const recovery = auth.recover()
