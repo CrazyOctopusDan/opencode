@@ -1,8 +1,10 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 
 type RememberedLoginForm = typeof import("./login").rememberedLoginForm
+type HydrateRememberedLoginForm = typeof import("./login").hydrateRememberedLoginForm
 
 let rememberedLoginForm: RememberedLoginForm
+let hydrateRememberedLoginForm: HydrateRememberedLoginForm
 
 beforeAll(async () => {
   mock.module("@opencode-ai/ui/button", () => ({ Button: () => null }))
@@ -23,6 +25,7 @@ beforeAll(async () => {
   }))
   const mod = await import("./login")
   rememberedLoginForm = mod.rememberedLoginForm
+  hydrateRememberedLoginForm = mod.hydrateRememberedLoginForm
 })
 
 describe("login remember me form helpers", () => {
@@ -52,5 +55,55 @@ describe("login remember me form helpers", () => {
       password: "saved-password",
       remember: true,
     })
+  })
+
+  test("applies slow remembered read when no user edits occurred", async () => {
+    const applied: Array<ReturnType<RememberedLoginForm>> = []
+
+    expect(
+      await hydrateRememberedLoginForm({
+        load: async () => ({
+          username: "saved-user",
+          password: "saved-password",
+          remembered: true,
+          passwordAvailable: true,
+        }),
+        edited: () => false,
+        setForm: (form) => applied.push(form),
+      }),
+    ).toBeTrue()
+    expect(applied).toEqual([
+      {
+        username: "saved-user",
+        password: "saved-password",
+        remember: true,
+      },
+    ])
+  })
+
+  test("slow remembered read does not overwrite user input or toggled checkbox", async () => {
+    let resolveSaved: (value: Parameters<RememberedLoginForm>[0]) => void = () => undefined
+    const saved = new Promise<Parameters<RememberedLoginForm>[0]>((resolve) => {
+      resolveSaved = resolve
+    })
+    const applied: Array<ReturnType<RememberedLoginForm>> = []
+    let edited = false
+
+    const hydration = hydrateRememberedLoginForm({
+      load: () => saved.promise,
+      edited: () => edited,
+      setForm: (form) => applied.push(form),
+    })
+
+    edited = true
+    resolveSaved({
+      username: "saved-user",
+      password: "saved-password",
+      remembered: true,
+      passwordAvailable: true,
+    })
+
+    expect(await hydration).toBeFalse()
+    expect(applied).toEqual([])
   })
 })

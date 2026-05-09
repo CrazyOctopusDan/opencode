@@ -23,10 +23,22 @@ export function rememberedLoginForm(saved: RememberedLoginFields) {
   }
 }
 
+export async function hydrateRememberedLoginForm(input: {
+  load: () => Promise<RememberedLoginFields>
+  edited: () => boolean
+  setForm: (form: ReturnType<typeof rememberedLoginForm>) => void
+}) {
+  const saved = await input.load()
+  if (input.edited()) return false
+  input.setForm(rememberedLoginForm(saved))
+  return true
+}
+
 export default function LoginPage() {
   const auth = useAuth()
   const navigate = useNavigate()
   const platform = usePlatform()
+  let edited = false
   const [form, setForm] = createStore({
     username: "",
     password: "",
@@ -41,8 +53,10 @@ export default function LoginPage() {
   })
 
   onMount(() => {
-    void TravelSkyAuth.remembered(platform).then((saved) => {
-      setForm(rememberedLoginForm(saved))
+    void hydrateRememberedLoginForm({
+      load: () => TravelSkyAuth.remembered(platform),
+      edited: () => edited,
+      setForm: (next) => setForm(next),
     })
   })
 
@@ -79,20 +93,29 @@ export default function LoginPage() {
             label="用户名"
             placeholder="请输入用户名"
             value={form.username}
-            onChange={(value) => setForm("username", value)}
+            onChange={(value) => {
+              edited = true
+              setForm("username", value)
+            }}
           />
           <TextField
             type="password"
             label="密码"
             placeholder="请输入密码"
             value={form.password}
-            onChange={(value) => setForm("password", value)}
+            onChange={(value) => {
+              edited = true
+              setForm("password", value)
+            }}
           />
           <label class="flex items-center gap-2 text-13-regular text-text-base">
             <input
               type="checkbox"
               checked={form.remember}
-              onChange={(event) => setForm("remember", event.currentTarget.checked)}
+              onChange={(event) => {
+                edited = true
+                setForm("remember", event.currentTarget.checked)
+              }}
             />
             <span>记住我</span>
           </label>
