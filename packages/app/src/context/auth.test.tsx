@@ -1,22 +1,10 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { beforeEach, describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
-import type { SetStoreFunction, Store } from "solid-js/store"
+import { createStore } from "solid-js/store"
+import { createAuthContext } from "./auth"
 import type { Platform } from "./platform"
 
-type AuthState = {
-  accessToken: string
-  username: string
-  expiresAt: number
-}
-
-type AuthContext = {
-  token: () => string | undefined
-  username: () => string
-  loggedIn: () => boolean
-  login: (username: string, password: string, remember?: boolean) => Promise<void>
-  recover: () => Promise<boolean>
-  logout: () => Promise<void>
-}
+type AuthContext = ReturnType<typeof createAuthContext>
 
 type Remembered = {
   username: string
@@ -36,7 +24,6 @@ type SecureCredentialApi = {
   secureCredentialDelete: (key: string) => Promise<void>
 }
 
-let initAuth: (() => AuthContext) | undefined
 let platform: Platform
 let remembered: Remembered
 let loginOk: boolean
@@ -49,55 +36,36 @@ function setApi(api: SecureCredentialApi | undefined) {
 }
 
 async function withAuth(fn: (auth: AuthContext) => Promise<void>) {
-  await createRoot((dispose) =>
-    Promise.resolve(fn(initAuth!())).finally(() => {
+  await createRoot((dispose) => {
+    const [store, setStore] = createStore({
+      accessToken: "",
+      username: "",
+      expiresAt: 0,
+    })
+    return Promise.resolve(
+      fn(
+        createAuthContext({
+          platform,
+          server: {
+            current: {
+              http: {
+                url: "https://tempo.example.test",
+              },
+            },
+          },
+          store,
+          setStore,
+          ready: Object.assign(() => true, { promise: undefined }),
+          removePersisted: () => {
+            authClears++
+          },
+        }),
+      ),
+    ).finally(() => {
       dispose()
-    }),
-  )
+    })
+  })
 }
-
-beforeAll(async () => {
-  mock.module("@opencode-ai/ui/context", () => ({
-    createSimpleContext: (input: { init: () => AuthContext }) => {
-      initAuth = input.init
-      return {
-        use: () => initAuth!(),
-        provider: () => undefined,
-      }
-    },
-  }))
-
-  mock.module("@/utils/persist", () => ({
-    Persist: {
-      global: (key: string, legacy?: string[]) => ({ key, legacy }),
-    },
-    persisted: (_target: unknown, store: [Store<AuthState>, SetStoreFunction<AuthState>]) => [
-      store[0],
-      store[1],
-      null,
-      Object.assign(() => true, { promise: undefined }),
-    ],
-    removePersisted: async () => {
-      authClears++
-    },
-  }))
-
-  mock.module("./platform", () => ({
-    usePlatform: () => platform,
-  }))
-
-  mock.module("./server", () => ({
-    useServer: () => ({
-      current: {
-        http: {
-          url: "https://tempo.example.test",
-        },
-      },
-    }),
-  }))
-
-  await import("./auth")
-})
 
 beforeEach(() => {
   remembered = {
