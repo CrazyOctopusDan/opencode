@@ -50,13 +50,13 @@
 
 - `packages/app/src/travelsky/auth.ts`
   - 新增 TravelSky Desktop 登录辅助模块。
-  - 管理 remembered credentials 的读取、写入、清理。
+  - 管理已记住凭据的读取、写入、清理。
   - 封装 Tempo token 失效识别和静默恢复入口。
   - 避免把公司接口细节散落到通用 auth context 和组件中。
 
 - `packages/app/src/pages/login.tsx`
   - 增加“记住我”勾选框。
-  - 页面加载时读取 remembered credentials。
+  - 页面加载时读取已记住凭据。
   - 有用户名则自动填入用户名。
   - 有可解密密码则自动填入密码并勾选“记住我”。
   - 只有用户名但没有可用密码时，只填用户名，不默认勾选。
@@ -65,7 +65,7 @@
 ### Desktop 原生层
 
 - `packages/desktop/src/preload/index.ts`
-  - 暴露安全凭据 IPC，例如 `secureStoreGet`、`secureStoreSet`、`secureStoreDelete`。
+  - 暴露安全凭据 IPC：`secureCredentialGet`、`secureCredentialSet`、`secureCredentialDelete`。
 
 - `packages/desktop/src/main/ipc.ts`
   - 接收安全凭据 IPC。
@@ -74,7 +74,7 @@
 
 - `packages/desktop/src/main/store.ts`
   - 复用现有 `electron-store` 存储能力。
-  - 保存加密后的 remembered credentials，不保存明文密码。
+  - 保存加密后的已记住凭据，不保存明文密码。
 
 ### Tempo 服务端链路
 
@@ -95,19 +95,19 @@
 
 1. 用户打开 Desktop。
 2. `AuthProvider` 读取现有 auth store。
-3. `/login` 页面读取 TravelSky remembered credentials。
+3. `/login` 页面读取 TravelSky 已记住凭据。
 4. 用户输入账号密码并选择是否勾选“记住我”。
 5. 提交登录后调用现有 `POST /global/login`。
 6. 登录成功后写入现有 auth store。
 7. 勾选“记住我”时，通过 Desktop 安全 IPC 保存用户名和加密密码。
-8. 未勾选“记住我”时，清理 remembered credentials。
+8. 未勾选“记住我”时，清理已记住凭据。
 
 ## 重启恢复数据流
 
 1. Desktop 重启后，前端可能从 auth store 读到未过期的旧 local token。
 2. 用户进入操作页后触发公司模型列表链路。
 3. Tempo API 如果返回已锁定的 token 失效格式，前端触发 `auth.recover()`。
-4. `auth.recover()` 读取 remembered credentials。
+4. `auth.recover()` 读取已记住凭据。
 5. 有可解密密码时，静默调用 `/global/login` 换取新 local token，并让服务端重新建立 Tempo session。
 6. 恢复成功后刷新模型列表一次。
 7. 没有可用密码或恢复失败时，清理 auth store 并跳转 `/login`。
@@ -129,6 +129,13 @@
 - 恢复失败只执行一次 `logout + navigate("/login")`。
 - 源仓库通用 SDK 请求不接入公司 token 失效逻辑。
 
+## 安全边界
+
+- `safeStorage` 只保护已记住凭据的落盘形态，避免本地存储中出现明文密码。
+- 因为需求要求登录页自动填入密码，并要求旧 token 失效时前端静默重登，Desktop renderer 在这些时刻会短暂持有解密后的明文密码。
+- 当前实现不把密码发送给 server 常驻保存，也不在 `safeStorage` 不可用时保存密码。
+- 如果后续要降低 renderer 明文暴露面，需要调整产品需求，例如取消自动填入密码，或改成主进程代发登录请求但登录页不展示密码。
+
 ## 验证计划
 
 在 `packages/opencode` 目录运行相关测试：
@@ -139,7 +146,7 @@
 
 在 `packages/app` 目录运行相关测试：
 
-- TravelSky auth helper：remembered credentials 可读时允许 recover。
+- TravelSky auth helper：已记住凭据可读时允许 recover。
 - TravelSky auth helper：无密码、解密不可用或登录失败时 recover 失败并清理登录态。
 - Login 页面或 auth context：勾选“记住我”保存凭据，未勾选清理凭据。
 
@@ -161,7 +168,7 @@
 未来合并时必须保护的行为：
 
 - Desktop 记住我只在安全加密可用时保存密码。
-- 旧 local token 失效后优先使用 remembered credentials 静默重登。
+- 旧 local token 失效后优先使用已记住凭据静默重登。
 - Tempo 模型列表 token 失效会触发恢复或回登录页。
 - Tempo 数据上报 token 失效不打扰用户。
 - 公司 token 失效逻辑不扩散到源仓库通用接口。
