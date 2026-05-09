@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createAuthContext } from "./auth"
@@ -33,6 +33,10 @@ let authClears: number
 
 function setApi(api: SecureCredentialApi | undefined) {
   ;(globalThis.window as typeof globalThis.window & { api?: SecureCredentialApi }).api = api
+}
+
+function clearApi() {
+  delete (globalThis.window as typeof globalThis.window & { api?: SecureCredentialApi }).api
 }
 
 async function withAuth(fn: (auth: AuthContext) => Promise<void>) {
@@ -112,6 +116,10 @@ beforeEach(() => {
         : new Response(JSON.stringify({ message: "Invalid username or password" }), { status: 401 })
     },
   }
+})
+
+afterEach(() => {
+  clearApi()
 })
 
 describe("Auth context TravelSky credential recovery", () => {
