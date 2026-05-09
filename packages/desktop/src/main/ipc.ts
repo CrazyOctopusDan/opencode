@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { BrowserWindow, Notification, app, clipboard, dialog, ipcMain, shell } from "electron"
+import { BrowserWindow, Notification, app, clipboard, dialog, ipcMain, safeStorage, shell } from "electron"
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 
 import type {
@@ -16,6 +16,18 @@ import { setTitlebar, updateTitlebar } from "./windows"
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
   return [{ name: "Files", extensions: ext }]
+}
+
+const SECURE_CREDENTIAL_STORE = "travelsky.secure-credentials"
+
+type StoredSecureCredential = {
+  username?: unknown
+  password?: unknown
+}
+
+type SecureCredentialInput = {
+  username: string
+  password: string
 }
 
 type Deps = {
@@ -95,6 +107,49 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("store-length", (_event: IpcMainInvokeEvent, name: string) => {
     const store = getStore(name)
     return Object.keys(store.store).length
+  })
+  ipcMain.handle("secure-credential-get", (_event: IpcMainInvokeEvent, key: string) => {
+    const stored = getStore(SECURE_CREDENTIAL_STORE).get(key)
+    if (!stored || typeof stored !== "object") return null
+    const item = stored as StoredSecureCredential
+    if (typeof item.username !== "string") return null
+    if (typeof item.password !== "string") return { username: item.username, password: null, passwordAvailable: false }
+    if (!safeStorage.isEncryptionAvailable()) return { username: item.username, password: null, passwordAvailable: false }
+    try {
+      return {
+        username: item.username,
+        password: safeStorage.decryptString(Buffer.from(item.password, "base64")),
+        passwordAvailable: true,
+      }
+    } catch {
+      return { username: item.username, password: null, passwordAvailable: false }
+    }
+  })
+  ipcMain.handle(
+    "secure-credential-set",
+    (_event: IpcMainInvokeEvent, key: string, value: SecureCredentialInput) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        getStore(SECURE_CREDENTIAL_STORE).set(key, {
+          username: value.username,
+        })
+        return { passwordSaved: false }
+      }
+      try {
+        getStore(SECURE_CREDENTIAL_STORE).set(key, {
+          username: value.username,
+          password: safeStorage.encryptString(value.password).toString("base64"),
+        })
+        return { passwordSaved: true }
+      } catch {
+        getStore(SECURE_CREDENTIAL_STORE).set(key, {
+          username: value.username,
+        })
+        return { passwordSaved: false }
+      }
+    },
+  )
+  ipcMain.handle("secure-credential-delete", (_event: IpcMainInvokeEvent, key: string) => {
+    getStore(SECURE_CREDENTIAL_STORE).delete(key)
   })
 
   ipcMain.handle(

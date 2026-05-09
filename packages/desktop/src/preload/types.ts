@@ -19,6 +19,12 @@ export type WindowConfig = {
   updaterEnabled: boolean
 }
 
+export type SecureCredential = {
+  username: string
+  password: string | null
+  passwordAvailable: boolean
+}
+
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
   installCli: () => Promise<string>
@@ -41,6 +47,9 @@ export type ElectronAPI = {
   storeClear: (name: string) => Promise<void>
   storeKeys: (name: string) => Promise<string[]>
   storeLength: (name: string) => Promise<number>
+  secureCredentialGet: (key: string) => Promise<SecureCredential | null>
+  secureCredentialSet: (key: string, value: { username: string; password: string }) => Promise<{ passwordSaved: boolean }>
+  secureCredentialDelete: (key: string) => Promise<void>
 
   getWindowCount: () => Promise<number>
   onSqliteMigrationProgress: (cb: (progress: SqliteMigrationProgress) => void) => () => void

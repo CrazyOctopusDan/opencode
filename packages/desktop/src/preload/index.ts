@@ -29,6 +29,9 @@ const api: ElectronAPI = {
   storeClear: (name) => ipcRenderer.invoke("store-clear", name),
   storeKeys: (name) => ipcRenderer.invoke("store-keys", name),
   storeLength: (name) => ipcRenderer.invoke("store-length", name),
+  secureCredentialGet: (key) => ipcRenderer.invoke("secure-credential-get", key),
+  secureCredentialSet: (key, value) => ipcRenderer.invoke("secure-credential-set", key, value),
+  secureCredentialDelete: (key) => ipcRenderer.invoke("secure-credential-delete", key),
 
   getWindowCount: () => ipcRenderer.invoke("get-window-count"),
   onSqliteMigrationProgress: (cb) => {
