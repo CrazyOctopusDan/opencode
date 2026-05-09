@@ -90,7 +90,7 @@ describe("login remember me form helpers", () => {
     let edited = false
 
     const hydration = hydrateRememberedLoginForm({
-      load: () => saved.promise,
+      load: () => saved,
       edited: () => edited,
       setForm: (form) => applied.push(form),
     })
