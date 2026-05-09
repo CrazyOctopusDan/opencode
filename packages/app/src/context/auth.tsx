@@ -1,6 +1,6 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
+import { TravelSkyAuth } from "@/travelsky/auth"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
@@ -45,16 +45,16 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       }),
     )
 
-    const valid = createMemo(() => {
+    const valid = () => {
       if (!store.accessToken) return false
       if (!store.expiresAt) return false
       return store.expiresAt > Date.now()
-    })
+    }
 
-    const token = createMemo(() => {
+    const token = () => {
       if (!valid()) return undefined
       return store.accessToken
-    })
+    }
 
     const clear = async () => {
       const auth = token()
@@ -75,39 +75,63 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       }).catch(() => undefined)
     }
 
+    const login = async (username: string, password: string, remember = false) => {
+      const conn = server.current
+      if (!conn) throw new Error("Server not available")
+      const fetcher = platform.fetch ?? globalThis.fetch
+      const url = conn.http.url
+      const path = "/global/login"
+      const res = await fetcher(`${url}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(`登录请求未送达。${hint(url, path)}。请检查内网连通性、代理/VPN、或服务进程是否存活。原始错误: ${msg}`)
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => undefined)) as LoginError | undefined
+        const msg = data?.message || data?.error || "Invalid username or password"
+        throw new Error(`${msg}。${hint(url, path)} HTTP=${res.status}`)
+      }
+      const data = (await res.json()) as LoginResult
+      const expiresAt = Date.now() + Math.max(1, data.expires_in) * 1000
+      setStore({
+        accessToken: data.access_token,
+        username,
+        expiresAt,
+      })
+      if (remember) {
+        await TravelSkyAuth.save(platform, { username, password })
+        return
+      }
+      await TravelSkyAuth.clear(platform)
+    }
+
     return {
       ready,
       token,
       username: () => store.username,
       loggedIn: valid,
-      async login(username: string, password: string) {
-        const conn = server.current
-        if (!conn) throw new Error("Server not available")
-        const fetcher = platform.fetch ?? globalThis.fetch
-        const url = conn.http.url
-        const path = "/global/login"
-        const res = await fetcher(`${url}${path}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ username, password }),
-        }).catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          throw new Error(`登录请求未送达。${hint(url, path)}。请检查内网连通性、代理/VPN、或服务进程是否存活。原始错误: ${msg}`)
-        })
-        if (!res.ok) {
-          const data = (await res.json().catch(() => undefined)) as LoginError | undefined
-          const msg = data?.message || data?.error || "Invalid username or password"
-          throw new Error(`${msg}。${hint(url, path)} HTTP=${res.status}`)
+      login,
+      async recover() {
+        const saved = await TravelSkyAuth.remembered(platform)
+        if (!saved.username || !saved.passwordAvailable || !saved.password) {
+          await clear()
+          return false
         }
-        const data = (await res.json()) as LoginResult
-        const expiresAt = Date.now() + Math.max(1, data.expires_in) * 1000
-        setStore({
-          accessToken: data.access_token,
-          username,
-          expiresAt,
-        })
+        const recovered = await login(saved.username, saved.password, true)
+          .then(() => true)
+          .catch(async () => {
+            await clear()
+            return false
+          })
+        if (!recovered) return false
+        if (valid()) return true
+        await clear()
+        return false
       },
       logout: clear,
     }
