@@ -2,16 +2,35 @@ import { Button } from "@opencode-ai/ui/button"
 import { Logo } from "@opencode-ai/ui/logo"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { useNavigate } from "@solidjs/router"
-import { createEffect, Show } from "solid-js"
+import { createEffect, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useAuth } from "@/context/auth"
+import { usePlatform } from "@/context/platform"
+import { TravelSkyAuth } from "@/travelsky/auth"
+
+type RememberedLoginFields = {
+  username: string
+  password: string
+  remembered: boolean
+  passwordAvailable: boolean
+}
+
+export function rememberedLoginForm(saved: RememberedLoginFields) {
+  return {
+    username: saved.username,
+    password: saved.password,
+    remember: saved.remembered && saved.passwordAvailable,
+  }
+}
 
 export default function LoginPage() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const platform = usePlatform()
   const [form, setForm] = createStore({
     username: "",
     password: "",
+    remember: false,
     loading: false,
     error: "",
   })
@@ -19,6 +38,12 @@ export default function LoginPage() {
   createEffect(() => {
     if (!auth.loggedIn()) return
     navigate("/", { replace: true })
+  })
+
+  onMount(() => {
+    void TravelSkyAuth.remembered(platform).then((saved) => {
+      setForm(rememberedLoginForm(saved))
+    })
   })
 
   const submit = async (e: SubmitEvent) => {
@@ -33,7 +58,7 @@ export default function LoginPage() {
       error: "",
     })
     await auth
-      .login(form.username.trim(), form.password)
+      .login(form.username.trim(), form.password, form.remember)
       .then(() => navigate("/", { replace: true }))
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : "登录失败"
@@ -63,6 +88,14 @@ export default function LoginPage() {
             value={form.password}
             onChange={(value) => setForm("password", value)}
           />
+          <label class="flex items-center gap-2 text-13-regular text-text-base">
+            <input
+              type="checkbox"
+              checked={form.remember}
+              onChange={(event) => setForm("remember", event.currentTarget.checked)}
+            />
+            <span>记住我</span>
+          </label>
           <Show when={form.error}>
             <div class="text-12-regular text-text-danger-base">{form.error}</div>
           </Show>
