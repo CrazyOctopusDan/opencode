@@ -42,6 +42,14 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         all: Object.values(providers),
         default: Provider.defaultModelIDs(providers),
         connected: Object.keys(connected),
+        ...(policy.expired
+          ? {
+              debug_tempo: {
+                auth_expired: true,
+                message: policy.expiredMessage,
+              },
+            }
+          : {}),
       }
     })
 

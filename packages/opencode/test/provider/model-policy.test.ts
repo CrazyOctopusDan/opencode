@@ -14,6 +14,7 @@ const original = {
 async function reset() {
   TempoSession.remove("model-policy-token")
   TempoSession.remove("empty-policy-token")
+  TempoSession.remove("expired-policy-token")
   globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
   await ModelPolicy.snapshot(true, "missing-policy-token")
   globalThis.fetch = original.fetch
@@ -92,6 +93,26 @@ describe("model policy", () => {
     const policy = await ModelPolicy.snapshot(true, "empty-policy-token")
     expect(policy.enabled).toBeFalse()
     expect(policy.locked).toBeFalse()
+    expect(policy.list).toEqual([])
+  })
+
+  test("preserves tempo auth expiration status", async () => {
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+    TempoSession.set("expired-policy-token", { token: "expired-upstream-token" })
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          code: 401,
+          message: "token校验失败，失败原因：登录已过期",
+        }),
+      )) as typeof fetch
+
+    const policy = await ModelPolicy.snapshot(true, "expired-policy-token")
+    expect(policy.enabled).toBeFalse()
+    expect(policy.locked).toBeFalse()
+    expect(policy.expired).toBeTrue()
+    expect(policy.expiredMessage).toBe("token校验失败，失败原因：登录已过期")
     expect(policy.list).toEqual([])
   })
 })

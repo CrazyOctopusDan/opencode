@@ -923,10 +923,16 @@ export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
 
 const DefaultModelIDs = Schema.Record(Schema.String, Schema.String)
 
+const TempoDebug = Schema.Struct({
+  auth_expired: Schema.Boolean,
+  message: optionalOmitUndefined(Schema.String),
+})
+
 export const ListResult = Schema.Struct({
   all: Schema.Array(Info),
   default: DefaultModelIDs,
   connected: Schema.Array(Schema.String),
+  debug_tempo: optionalOmitUndefined(TempoDebug),
 }).pipe(withStatics((s) => ({ zod: zod(s) })))
 export type ListResult = Types.DeepMutable<Schema.Schema.Type<typeof ListResult>>
 

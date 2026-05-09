@@ -3904,6 +3904,19 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "debug_tempo": {
+                      "type": "object",
+                      "properties": {
+                        "auth_expired": {
+                          "type": "boolean"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["auth_expired"],
+                      "additionalProperties": false
                     }
                   },
                   "required": ["all", "default", "connected"],

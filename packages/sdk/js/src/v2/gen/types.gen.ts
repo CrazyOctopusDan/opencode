@@ -4858,6 +4858,10 @@ export type ProviderListResponses = {
       [key: string]: string
     }
     connected: Array<string>
+    debug_tempo?: {
+      auth_expired: boolean
+      message?: string
+    }
   }
 }
 

@@ -31,6 +31,8 @@ type Policy = z.infer<typeof PolicySchema>[number]
 type Snapshot = {
   enabled: boolean
   locked: boolean
+  expired: boolean
+  expiredMessage?: string
   list: Policy[]
   provider: (id: string) => Policy | undefined
   allowedProvider: (id: string) => boolean
@@ -42,6 +44,7 @@ const refreshMs = () => Math.max(5, Flag.OPENCODE_LOCKED_MODEL_POLICY_REFRESH_SE
 let cache: Snapshot = {
   enabled: false,
   locked: false,
+  expired: false,
   list: [],
   provider: () => undefined,
   allowedProvider: () => false,
@@ -81,6 +84,7 @@ function makeSnapshot(list: Policy[], locked: boolean): Snapshot {
   return {
     enabled: normalized.length > 0,
     locked: locked && normalized.length > 0,
+    expired: false,
     list: normalized,
     provider: (id) => map.get(id),
     allowedProvider: (id) => map.has(id),
@@ -89,6 +93,19 @@ function makeSnapshot(list: Policy[], locked: boolean): Snapshot {
       if (!provider) return false
       return provider.models.some((item) => item.id === modelID)
     },
+  }
+}
+
+function makeExpiredSnapshot(message: string): Snapshot {
+  return {
+    enabled: false,
+    locked: false,
+    expired: true,
+    expiredMessage: message,
+    list: [],
+    provider: () => undefined,
+    allowedProvider: () => false,
+    allowedModel: () => false,
   }
 }
 
@@ -138,7 +155,13 @@ export namespace ModelPolicy {
     if (!force && Date.now() < expiresAt) return cache
     const auth = TempoSession.get(localToken)
     const locked = TempoApi.enabled() && !!auth?.token
-    const list = (await fromTempo(localToken)) ?? (await fromRemote()) ?? fromEnv() ?? []
+    const tempo = await fromTempo(localToken)
+    if (tempo?.status === "expired") {
+      cache = makeExpiredSnapshot(tempo.message)
+      expiresAt = Date.now() + refreshMs()
+      return cache
+    }
+    const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
     cache = makeSnapshot(list, locked)
     expiresAt = Date.now() + refreshMs()
     return cache
