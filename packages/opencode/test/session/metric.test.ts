@@ -4,94 +4,19 @@ import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionMetric } from "../../src/session/metric"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 
-function msg(input: {
-  id: string
-  parent: string
-  provider: string
-  model: string
-  text: string
-  tool?: {
-    name: string
-    status: "completed" | "error" | "running" | "pending"
-  }
-  tokens: {
-    input: number
-    output: number
-    reasoning: number
-    read: number
-    write: number
-    total?: number
-  }
-}): MessageV2.WithParts {
+function user(input: { id: string; provider: string; model: string; text: string }): MessageV2.WithParts {
   const id = MessageID.make(input.id)
-  const parent = MessageID.make(input.parent)
   const sid = SessionID.make("s1")
-  const model = ModelID.make(input.model)
-  const provider = ProviderID.make(input.provider)
-  const tools =
-    input.tool
-      ? [
-          {
-            id: PartID.ascending(),
-            messageID: id,
-            sessionID: sid,
-            type: "tool" as const,
-            callID: `${input.id}-call`,
-            tool: input.tool.name,
-            state:
-              input.tool.status === "completed"
-                ? {
-                    status: "completed" as const,
-                    input: {},
-                    output: "ok",
-                    title: "ok",
-                    metadata: {},
-                    time: { start: 1, end: 2 },
-                  }
-                : input.tool.status === "error"
-                  ? {
-                      status: "error" as const,
-                      input: {},
-                      error: "bad",
-                      time: { start: 1, end: 2 },
-                    }
-                  : input.tool.status === "running"
-                    ? {
-                        status: "running" as const,
-                        input: {},
-                        time: { start: 1 },
-                      }
-                    : {
-                        status: "pending" as const,
-                        input: {},
-                        raw: "",
-                      },
-          },
-        ]
-      : []
-
   return {
     info: {
       id,
-      role: "assistant",
+      role: "user",
       sessionID: sid,
-      parentID: parent,
-      modelID: model,
-      providerID: provider,
-      mode: "build",
+      time: { created: 1 },
       agent: "build",
-      path: { cwd: "/tmp", root: "/tmp" },
-      cost: 0,
-      time: { created: 1, completed: 2 },
-      tokens: {
-        total: input.tokens.total,
-        input: input.tokens.input,
-        output: input.tokens.output,
-        reasoning: input.tokens.reasoning,
-        cache: {
-          read: input.tokens.read,
-          write: input.tokens.write,
-        },
+      model: {
+        modelID: ModelID.make(input.model),
+        providerID: ProviderID.make(input.provider),
       },
     },
     parts: [
@@ -102,39 +27,168 @@ function msg(input: {
         type: "text",
         text: input.text,
       },
-      ...tools,
+    ],
+  }
+}
+
+function tool(input: {
+  id: MessageID
+  sid: SessionID
+  name: string
+  status: "completed" | "error" | "running" | "pending"
+  toolInput?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  error?: string
+}): MessageV2.ToolPart {
+  return {
+    id: PartID.ascending(),
+    messageID: input.id,
+    sessionID: input.sid,
+    type: "tool",
+    callID: `${input.id}-${input.name}-${PartID.ascending()}`,
+    tool: input.name,
+    state:
+      input.status === "completed"
+        ? {
+            status: "completed",
+            input: input.toolInput ?? {},
+            output: "ok",
+            title: "ok",
+            metadata: input.metadata ?? {},
+            time: { start: 1, end: 2 },
+          }
+        : input.status === "error"
+          ? {
+              status: "error",
+              input: input.toolInput ?? {},
+              error: input.error ?? "bad",
+              metadata: input.metadata,
+              time: { start: 1, end: 2 },
+            }
+          : input.status === "running"
+            ? {
+                status: "running",
+                input: input.toolInput ?? {},
+                metadata: input.metadata,
+                time: { start: 1 },
+              }
+            : {
+                status: "pending",
+                input: input.toolInput ?? {},
+                raw: "",
+              },
+  }
+}
+
+function assistant(input: {
+  id: string
+  parent: string
+  provider: string
+  model: string
+  text: string
+  tools?: Array<{
+    name: string
+    status: "completed" | "error" | "running" | "pending"
+    toolInput?: Record<string, unknown>
+    metadata?: Record<string, unknown>
+    error?: string
+  }>
+  stepCount?: number
+  finish?: string
+}): MessageV2.WithParts {
+  const id = MessageID.make(input.id)
+  const sid = SessionID.make("s1")
+  return {
+    info: {
+      id,
+      role: "assistant",
+      sessionID: sid,
+      parentID: MessageID.make(input.parent),
+      modelID: ModelID.make(input.model),
+      providerID: ProviderID.make(input.provider),
+      mode: "build",
+      agent: "build",
+      path: { cwd: "/tmp", root: "/tmp" },
+      cost: 0,
+      time: { created: 1, completed: 2 },
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: {
+          read: 0,
+          write: 0,
+        },
+      },
+      finish: input.finish,
+    },
+    parts: [
+      {
+        id: PartID.ascending(),
+        messageID: id,
+        sessionID: sid,
+        type: "text",
+        text: input.text,
+      },
+      ...Array.from({ length: input.stepCount ?? 0 }, () => ({
+        id: PartID.ascending(),
+        messageID: id,
+        sessionID: sid,
+        type: "step-finish" as const,
+        reason: "stop",
+        cost: 0,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+      })),
+      ...(input.tools ?? []).map((item) =>
+        tool({
+          id,
+          sid,
+          name: item.name,
+          status: item.status,
+          toolInput: item.toolInput,
+          metadata: item.metadata,
+          error: item.error,
+        }),
+      ),
     ],
   }
 }
 
 describe("session metric", () => {
-  test("builds payload from all assistant steps in one reply", () => {
+  test("builds v2 conversation stats from visible session messages", () => {
     const rows = [
-      msg({
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "first" }),
+      assistant({
         id: "a1",
         parent: "u1",
         provider: "travelSky",
         model: "qwen-1",
         text: "hello",
-        tool: { name: "bash", status: "completed" },
-        tokens: { input: 1, output: 2, reasoning: 3, read: 4, write: 5, total: 15 },
+        stepCount: 1,
+        tools: [{ name: "bash", status: "completed" }],
       }),
-      msg({
+      assistant({
         id: "a2",
         parent: "u1",
         provider: "travelSky",
         model: "qwen-1",
         text: "world",
-        tool: { name: "bash", status: "error" },
-        tokens: { input: 10, output: 20, reasoning: 30, read: 40, write: 50, total: 150 },
+        stepCount: 2,
+        tools: [{ name: "grep", status: "error", metadata: { code: "EACCES" }, error: "permission denied" }],
       }),
-      msg({
+      user({ id: "u2", provider: "travelSky", model: "qwen-1", text: "second" }),
+      assistant({
         id: "a3",
         parent: "u2",
         provider: "travelSky",
         model: "qwen-2",
         text: "ignore",
-        tokens: { input: 1, output: 1, reasoning: 1, read: 1, write: 1, total: 5 },
+        stepCount: 1,
       }),
     ]
 
@@ -150,27 +204,40 @@ describe("session metric", () => {
     expect(body?.modelName).toBe("qwen-1")
 
     const other = JSON.parse(body?.other ?? "{}")
-    expect(other.token).toEqual({
-      input: 11,
-      output: 22,
-      reasoning: 33,
-      cache: { read: 44, write: 55 },
-      total: 165,
+    expect(other.token).toBeUndefined()
+    expect(other.tool).toBeUndefined()
+    expect(other.answer_code).toBeUndefined()
+    expect(other.v2).toEqual({
+      user_messages: 2,
+      agent_replies: 3,
+      agent_steps: 4,
+      tool_calls: 2,
+      tool_call_type_distribution: {
+        bash: 1,
+        grep: 1,
+      },
+      tool_call_success_rate: 0.5,
+      tool_failures: 1,
+      tool_failure_codes: {
+        EACCES: 1,
+      },
+      session_end_reason: "tool_error",
     })
-    expect(other.tool.total).toBe(2)
-    expect(other.tool.by_name).toEqual({ bash: 2 })
-    expect(other.tool.by_status).toEqual({ completed: 1, error: 1 })
   })
 
-  test("includes file change stats from diffs", () => {
+  test("builds v1 file change stats from diffs and edit events", () => {
     const rows = [
-      msg({
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change files" }),
+      assistant({
         id: "a1",
         parent: "u1",
         provider: "travelSky",
         model: "qwen-1",
         text: "changed files",
-        tokens: { input: 1, output: 1, reasoning: 0, read: 0, write: 0, total: 2 },
+        tools: [
+          { name: "edit", status: "completed", toolInput: { filePath: "/tmp/src/old.js" } },
+          { name: "edit", status: "completed", toolInput: { filePath: "/tmp/src/old.js" } },
+        ],
       }),
     ]
 
@@ -185,103 +252,81 @@ describe("session metric", () => {
           status: "added",
           additions: 2,
           deletions: 0,
-          patch: [
-            "diff --git a/src/new.ts b/src/new.ts",
-            "+++ b/src/new.ts",
-            "+export const foo = 1",
-            "+console.log(foo)",
-          ].join("\n"),
+          patch: "",
         },
         {
-          file: "src/old.ts",
+          file: "src/old.js",
           status: "modified",
           additions: 1,
           deletions: 1,
-          patch: [
-            "diff --git a/src/old.ts b/src/old.ts",
-            "--- a/src/old.ts",
-            "+++ b/src/old.ts",
-            "-const old = true",
-            "+const next = true",
-          ].join("\n"),
+          patch: "",
+        },
+        {
+          file: "cmd/main.go",
+          status: "deleted",
+          additions: 0,
+          deletions: 4,
+          patch: "",
         },
       ],
     })
 
     const other = JSON.parse(body?.other ?? "{}")
-    expect(other.file_change).toEqual({
-      files: 2,
-      additions: 3,
-      deletions: 1,
-      generated_chars: 53,
+    expect(other.v1).toEqual({
+      modified_files: 1,
+      added_files: 1,
+      deleted_files: 1,
+      line_changes: {
+        added: 3,
+        deleted: 5,
+        total: 8,
+        net: -2,
+      },
+      language_distribution: {
+        TS: 1,
+        JS: 1,
+        Go: 1,
+      },
+      max_single_file_changed_lines: 4,
+      repeated_modified_files: 1,
       by_file: [
         {
           file: "src/new.ts",
           status: "added",
+          language: "TS",
           additions: 2,
           deletions: 0,
-          generated_chars: 36,
+          changed_lines: 2,
         },
         {
-          file: "src/old.ts",
+          file: "src/old.js",
           status: "modified",
+          language: "JS",
           additions: 1,
           deletions: 1,
-          generated_chars: 17,
+          changed_lines: 2,
+        },
+        {
+          file: "cmd/main.go",
+          status: "deleted",
+          language: "Go",
+          additions: 0,
+          deletions: 4,
+          changed_lines: 4,
         },
       ],
-    })
-  })
-
-  test("includes answer code block stats separately from file changes", () => {
-    const rows = [
-      msg({
-        id: "a1",
-        parent: "u1",
-        provider: "travelSky",
-        model: "qwen-1",
-        text: ["Here is code:", "```ts", "const foo = 1", "console.log(foo)", "```", "```bash", "echo ok", "```"].join(
-          "\n",
-        ),
-        tokens: { input: 1, output: 1, reasoning: 0, read: 0, write: 0, total: 2 },
-      }),
-    ]
-
-    const body = SessionMetric.build({
-      rows,
-      parent: MessageID.make("u1"),
-      model: "qwen-1",
-      provider: "travelSky",
-    })
-
-    const other = JSON.parse(body?.other ?? "{}")
-    expect(other.answer_code).toEqual({
-      blocks: 2,
-      lines: 3,
-      chars: 36,
-      languages: {
-        ts: 1,
-        bash: 1,
-      },
-    })
-    expect(other.file_change).toEqual({
-      files: 0,
-      additions: 0,
-      deletions: 0,
-      generated_chars: 0,
-      by_file: [],
     })
   })
 
   test("skips non-travelsky provider", () => {
     const rows = [
-      msg({
+      user({ id: "u1", provider: "openai", model: "gpt-5", text: "hello" }),
+      assistant({
         id: "a1",
         parent: "u1",
         provider: "openai",
         model: "gpt-5",
         text: "hello",
-        tokens: { input: 1, output: 1, reasoning: 1, read: 1, write: 1, total: 5 },
       }),
     ]
 
