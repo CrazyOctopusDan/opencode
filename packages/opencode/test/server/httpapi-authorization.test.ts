@@ -17,6 +17,9 @@ const Api = HttpApi.make("test-authorization").add(
         success: Schema.String,
         error: HttpApiError.NotFound,
       }),
+      HttpApiEndpoint.post("login", "/global/login", {
+        success: Schema.String,
+      }),
     )
     .middleware(Authorization),
 )
@@ -24,7 +27,8 @@ const Api = HttpApi.make("test-authorization").add(
 const handlers = HttpApiBuilder.group(Api, "test", (handlers) =>
   handlers
     .handle("probe", () => Effect.succeed("ok"))
-    .handle("missing", () => Effect.fail(new HttpApiError.NotFound({}))),
+    .handle("missing", () => Effect.fail(new HttpApiError.NotFound({})))
+    .handle("login", () => Effect.succeed("ok")),
 )
 
 const apiLayer = HttpRouter.serve(
@@ -51,6 +55,15 @@ const getProbe = (headers?: Record<string, string>) =>
   )
 
 describe("HttpApi authorization middleware", () => {
+  itSecret.live("allows global login without basic auth", () =>
+    Effect.gen(function* () {
+      const response = yield* HttpClientRequest.post("/global/login").pipe(HttpClient.execute)
+
+      expect(response.status).toBe(200)
+      expect(yield* response.json).toBe("ok")
+    }),
+  )
+
   it.live("allows requests when server password is not configured", () =>
     Effect.gen(function* () {
       const response = yield* getProbe()

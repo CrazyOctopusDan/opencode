@@ -1,6 +1,43 @@
 import { describe, expect, test } from "bun:test"
 import { TempoApi } from "../../src/server/tempo-api"
 
+describe("tempo api login", () => {
+  test("posts username with encrypted password to company login endpoint", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input.toString()).toBe("https://tempo.travelsky.com.cn/ai/data/api/auth/login")
+      expect(init?.method).toBe("POST")
+      expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json")
+
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      expect(body.username).toBe("dummy-user")
+      expect(body.plugin).toBe("OpenCode")
+      expect(typeof body.enPasswd).toBe("string")
+      expect(body.enPasswd).not.toBe("dummy-password")
+      expect(String(body.enPasswd).length).toBeGreaterThan(20)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            token: "tempo-login-token",
+          },
+        }),
+      )
+    }) as typeof fetch
+
+    try {
+      const result = await TempoApi.login({
+        username: "dummy-user",
+        password: "dummy-password",
+      })
+      expect(result.token).toBe("tempo-login-token")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
 describe("tempo api model normalization", () => {
   test("maps row payload into single travelSky provider with model-level baseURL", async () => {
     const originalFetch = globalThis.fetch
