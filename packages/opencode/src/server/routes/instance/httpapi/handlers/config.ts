@@ -67,7 +67,7 @@ export const configHandlers = HttpApiBuilder.group(InstanceHttpApi, "config", (h
       const connected = yield* providerSvc.list()
       const providers = policy.enabled ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list)) : connected
       return {
-        providers: Object.values(providers),
+        providers: Object.values(providers).map(Provider.toPublicInfo),
         default: Provider.defaultModelIDs(providers),
       }
     })

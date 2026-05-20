@@ -159,14 +159,19 @@ function fileChange(input: {
   diffs?: Snapshot.FileDiff[]
   rows: Array<MessageV2.WithParts & { info: MessageV2.Assistant }>
 }): FileChangeV1 {
-  const list = (input.diffs ?? []).map((item) => ({
-    file: item.file,
-    status: item.status ?? "modified",
-    language: language(item.file),
-    additions: item.additions,
-    deletions: item.deletions,
-    changed_lines: item.additions + item.deletions,
-  }))
+  const list = (input.diffs ?? []).flatMap((item) => {
+    if (!item.file) return []
+    return [
+      {
+        file: item.file,
+        status: item.status ?? "modified",
+        language: language(item.file),
+        additions: item.additions,
+        deletions: item.deletions,
+        changed_lines: item.additions + item.deletions,
+      },
+    ]
+  })
   const added = list.reduce((acc, item) => acc + item.additions, 0)
   const deleted = list.reduce((acc, item) => acc + item.deletions, 0)
   return {

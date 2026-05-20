@@ -4,9 +4,14 @@ import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionMetric } from "../../src/session/metric"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 
+function mid(input: string) {
+  return MessageID.make(input.startsWith("msg") ? input : `msg_${input}`)
+}
+
+const sid = SessionID.make("ses_1")
+
 function user(input: { id: string; provider: string; model: string; text: string }): MessageV2.WithParts {
-  const id = MessageID.make(input.id)
-  const sid = SessionID.make("s1")
+  const id = mid(input.id)
   return {
     info: {
       id,
@@ -96,14 +101,13 @@ function assistant(input: {
   stepCount?: number
   finish?: string
 }): MessageV2.WithParts {
-  const id = MessageID.make(input.id)
-  const sid = SessionID.make("s1")
+  const id = mid(input.id)
   return {
     info: {
       id,
       role: "assistant",
       sessionID: sid,
-      parentID: MessageID.make(input.parent),
+      parentID: mid(input.parent),
       modelID: ModelID.make(input.model),
       providerID: ProviderID.make(input.provider),
       mode: "build",
@@ -194,7 +198,7 @@ describe("session metric", () => {
 
     const body = SessionMetric.build({
       rows,
-      parent: MessageID.make("u1"),
+      parent: mid("u1"),
       model: "qwen-1",
       provider: "travelSky",
     })
@@ -243,7 +247,7 @@ describe("session metric", () => {
 
     const body = SessionMetric.build({
       rows,
-      parent: MessageID.make("u1"),
+      parent: mid("u1"),
       model: "qwen-1",
       provider: "travelSky",
       diffs: [
@@ -332,7 +336,7 @@ describe("session metric", () => {
 
     const body = SessionMetric.build({
       rows,
-      parent: MessageID.make("u1"),
+      parent: mid("u1"),
       model: "gpt-5",
       provider: "openai",
     })
