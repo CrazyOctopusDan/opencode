@@ -13,8 +13,12 @@
 
 - `packages/opencode/src/session/metric.ts`：构建 `text/modelName/other` 上报体，定义 `other.v1` 与 `other.v2` 的统计口径。
 - `packages/opencode/src/session/prompt.ts`：完成态单次上报触发点，仍负责传入本轮 `Snapshot.FileDiff`。
+- `packages/opencode/src/snapshot/index.ts`：内部 snapshot diff 来源；非 git 目录必须用当前目录作为对比根，支撑 shell/bash 等工具产生的最终文件 diff。
+- `packages/opencode/src/tool/write.ts`：为 `write` 工具输出 `metadata.filediff`，供 `v1` 在 snapshot diff 缺失时兜底统计文件状态与行数。
 - `packages/opencode/src/server/tempo-metric.ts`：发送 metric 请求并保持失败/失效静默，不影响对话主链路。
 - `packages/opencode/test/session/metric.test.ts`：回归验证 `other.v1/v2` 聚合结构与 provider 过滤。
+- `packages/opencode/test/snapshot/snapshot.test.ts`：回归验证非 git 目录也能生成 snapshot diff。
+- `packages/opencode/test/tool/write.test.ts`：回归验证 `write` 工具输出 `metadata.filediff`。
 - `packages/opencode/test/server/tempo-metric.test.ts`：回归验证 metric 请求发送、无登录态跳过、token 失效静默失败。
 - `travelsky/metric-design.md`、`travelsky/metric-CONTEXT.md`：记录统计矩阵设计与决策背景。
 
@@ -24,7 +28,10 @@
 - `text` 仍按同一 `parentID` 下非 summary assistant 文本片段的 Unicode 字符数统计。
 - `other` 必须是 JSON 字符串，顶层必须包含 `v1` 和 `v2`。
 - `other.v1` 必须包含：`modified_files`、`added_files`、`deleted_files`、`line_changes.added/deleted/total/net`、`language_distribution`、`max_single_file_changed_lines`、`repeated_modified_files`、`by_file`。
-- `other.v1` 文件改动必须来自本轮完成态 `Snapshot.FileDiff` 聚合，不能上传完整 diff 原文。
+- 非 git 目录不能导致 `Snapshot.track()` 禁用；内部 snapshot 必须限定在当前打开目录，不能使用 `/` 作为非 git 项目的对比根。
+- `other.v1` 文件改动必须优先来自本轮完成态 `Snapshot.FileDiff` 聚合；同时必须合并当前回答已完成 `edit/write/apply_patch` 工具 metadata 中 snapshot 未覆盖的 `filediff/files`，尤其是会话目录外的文件。
+- 当 diff 数组为空时，必须能从工具 metadata 中的 `filediff/files` 兜底聚合，不能让有编辑事件的会话全部归零。
+- `other.v1.by_file` 只能上传文件、状态、语言和行数统计，不能上传完整 diff 原文或 patch。
 - `other.v1.repeated_modified_files` 必须优先基于当前回答中的 `edit/write/apply_patch` 完成事件统计，同一文件出现 2 次及以上计为重复修改。
 - `other.v2` 必须包含：`user_messages`、`agent_replies`、`agent_steps`、`tool_calls`、`tool_call_type_distribution`、`tool_call_success_rate`、`tool_failures`、`tool_failure_codes`、`session_end_reason`。
 - `other.v2.agent_steps` 必须基于 `step-finish` part 统计；工具调用统计必须基于 `tool` part。
@@ -35,15 +42,18 @@
 
 - 上游如果也改了 metric 聚合，必须语义合并，不能回退到旧的 `token/tool/file_change/answer_code` 顶层结构。
 - 上游如果调整消息 part 或 tool state 结构，优先保留 `v1`、`v2` 字段名和含义，再适配新的事件来源。
-- 上游如果调整 snapshot diff 结构，必须保持 `v1` 使用完成态最终 diff 聚合，不能改成上传 patch 内容。
+- 上游如果调整 project/vcs/snapshot 关系，必须保留非 git 目录的内部 snapshot 能力，但不能把非 git 目录伪装成用户项目 git 仓库。
+- 上游如果调整 snapshot diff 结构，必须保持 `v1` 优先使用完成态最终 diff 聚合，并保留工具 metadata 兜底，不能改成上传 patch 内容。
+- 上游如果调整 `edit/write/apply_patch` 工具 metadata，必须保留项目外文件能通过 `filediff/files` 进入 v1 的能力，避免 `/projecta/b` 会话修改 `~/xxxx/filec` 被丢失。
+- 上游如果调整 `write` 工具 metadata，必须保留 `filediff.file/status/additions/deletions` 或提供等价字段，避免 `write` 创建/覆盖文件时 `v1` 无法统计。
 - 上游如果调整上报时机，必须保留每轮回答完成后单次上报，避免中间 step 重复上报。
 - 上游如果调整 Tempo metric 发送层，仍必须保持失败、超时、token 失效不打扰用户对话。
 
 ## 验证方式
 
-- 在 `packages/opencode` 目录运行：`bun test test/session/metric.test.ts test/server/tempo-metric.test.ts`。
+- 在 `packages/opencode` 目录运行：`bun test test/snapshot/snapshot.test.ts test/session/metric.test.ts test/tool/write.test.ts test/server/tempo-metric.test.ts`。
 - 在 `packages/opencode` 目录运行：`bun typecheck`。
-- 如果本机默认 Node 版本低于 `@typescript/native-preview` 要求，可临时将 Node 22 放到 `PATH` 前面后再运行 `bun typecheck`。
+- 如果本机 `bun typecheck` 因 `@typescript/native-preview-darwin-arm64` wrapper 解析失败，可使用仓库已安装的 native `tsgo --noEmit` 二进制进行同等类型检查，并在结果中注明 wrapper 问题。
 - 人工检查 `other` 序列化结果，确认顶层为 `{ "v1": ..., "v2": ... }`，且不再包含顶层 `token`、`tool`、`answer_code`。
 
 ## 停止条件

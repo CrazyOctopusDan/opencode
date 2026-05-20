@@ -77,8 +77,15 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | AppProce
         Effect.fn("Snapshot.state")(function* (ctx) {
           const state = {
             directory: ctx.directory,
-            worktree: ctx.worktree,
-            gitdir: path.join(Global.Path.data, "snapshot", ctx.project.id, Hash.fast(ctx.worktree)),
+            // Non-git projects have no repository worktree. Snapshot still needs
+            // a stable comparison root, but it must stay scoped to the opened directory.
+            worktree: ctx.project.vcs === "git" ? ctx.worktree : ctx.directory,
+            gitdir: path.join(
+              Global.Path.data,
+              "snapshot",
+              ctx.project.id,
+              Hash.fast(ctx.project.vcs === "git" ? ctx.worktree : ctx.directory),
+            ),
             vcs: ctx.project.vcs,
           }
 
@@ -166,7 +173,6 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | AppProce
           const locked = <A, E, R>(fx: Effect.Effect<A, E, R>) => lock(state.gitdir).withPermits(1)(fx)
 
           const enabled = Effect.fnUntraced(function* () {
-            if (state.vcs !== "git") return false
             return (yield* config.get()).snapshot !== false
           })
 

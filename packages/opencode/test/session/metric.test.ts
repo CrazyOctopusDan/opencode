@@ -322,6 +322,202 @@ describe("session metric", () => {
     })
   })
 
+  test("builds v1 file change stats from tool metadata when diffs are unavailable", () => {
+    const rows = [
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change files" }),
+      assistant({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "changed files",
+        tools: [
+          {
+            name: "edit",
+            status: "completed",
+            metadata: {
+              filediff: {
+                file: "/tmp/src/edit.ts",
+                status: "modified",
+                additions: 3,
+                deletions: 1,
+                patch: "",
+              },
+            },
+          },
+          {
+            name: "apply_patch",
+            status: "completed",
+            metadata: {
+              files: [
+                {
+                  relativePath: "src/new.py",
+                  type: "add",
+                  additions: 2,
+                  deletions: 0,
+                  patch: "",
+                },
+                {
+                  relativePath: "src/old.go",
+                  type: "delete",
+                  additions: 0,
+                  deletions: 4,
+                  patch: "",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ]
+
+    const body = SessionMetric.build({
+      rows,
+      parent: mid("u1"),
+      model: "qwen-1",
+      provider: "travelSky",
+      diffs: [],
+    })
+
+    const other = JSON.parse(body?.other ?? "{}")
+    expect(other.v1).toEqual({
+      modified_files: 1,
+      added_files: 1,
+      deleted_files: 1,
+      line_changes: {
+        added: 5,
+        deleted: 5,
+        total: 10,
+        net: 0,
+      },
+      language_distribution: {
+        TS: 1,
+        Python: 1,
+        Go: 1,
+      },
+      max_single_file_changed_lines: 4,
+      repeated_modified_files: 0,
+      by_file: [
+        {
+          file: "src/edit.ts",
+          status: "modified",
+          language: "TS",
+          additions: 3,
+          deletions: 1,
+          changed_lines: 4,
+        },
+        {
+          file: "src/new.py",
+          status: "added",
+          language: "Python",
+          additions: 2,
+          deletions: 0,
+          changed_lines: 2,
+        },
+        {
+          file: "src/old.go",
+          status: "deleted",
+          language: "Go",
+          additions: 0,
+          deletions: 4,
+          changed_lines: 4,
+        },
+      ],
+    })
+  })
+
+  test("keeps external tool file changes when snapshot diffs only cover the project", () => {
+    const rows = [
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change project and external files" }),
+      assistant({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "changed files",
+        tools: [
+          {
+            name: "edit",
+            status: "completed",
+            metadata: {
+              filediff: {
+                file: "/tmp/src/project.ts",
+                status: "modified",
+                additions: 10,
+                deletions: 10,
+                patch: "",
+              },
+            },
+          },
+          {
+            name: "write",
+            status: "completed",
+            metadata: {
+              filediff: {
+                file: "/Users/test/external/algorithm.ts",
+                status: "added",
+                additions: 5,
+                deletions: 0,
+                patch: "",
+              },
+            },
+          },
+        ],
+      }),
+    ]
+
+    const body = SessionMetric.build({
+      rows,
+      parent: mid("u1"),
+      model: "qwen-1",
+      provider: "travelSky",
+      diffs: [
+        {
+          file: "src/project.ts",
+          status: "modified",
+          additions: 2,
+          deletions: 1,
+          patch: "",
+        },
+      ],
+    })
+
+    const other = JSON.parse(body?.other ?? "{}")
+    expect(other.v1).toMatchObject({
+      modified_files: 1,
+      added_files: 1,
+      deleted_files: 0,
+      line_changes: {
+        added: 7,
+        deleted: 1,
+        total: 8,
+        net: 6,
+      },
+      language_distribution: {
+        TS: 2,
+      },
+      max_single_file_changed_lines: 5,
+    })
+    expect(other.v1.by_file).toEqual([
+      {
+        file: "src/project.ts",
+        status: "modified",
+        language: "TS",
+        additions: 2,
+        deletions: 1,
+        changed_lines: 3,
+      },
+      {
+        file: "/Users/test/external/algorithm.ts",
+        status: "added",
+        language: "TS",
+        additions: 5,
+        deletions: 0,
+        changed_lines: 5,
+      },
+    ])
+  })
+
   test("skips non-travelsky provider", () => {
     const rows = [
       user({ id: "u1", provider: "openai", model: "gpt-5", text: "hello" }),

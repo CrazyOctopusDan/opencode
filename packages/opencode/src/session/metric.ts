@@ -105,6 +105,22 @@ function stringValue(input: unknown) {
   return undefined
 }
 
+function numberValue(input: unknown) {
+  if (typeof input === "number" && Number.isFinite(input)) return input
+  if (typeof input === "string" && input.trim()) {
+    const parsed = Number(input)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function statusValue(input: unknown): "added" | "deleted" | "modified" | undefined {
+  if (input === "added" || input === "add") return "added"
+  if (input === "deleted" || input === "delete") return "deleted"
+  if (input === "modified" || input === "modify" || input === "update" || input === "move") return "modified"
+  return undefined
+}
+
 function metadataString(input: Record<string, unknown> | undefined, keys: string[]) {
   return keys.map((key) => stringValue(input?.[key])).find((item) => item)
 }
@@ -155,23 +171,96 @@ function repeatedModifiedFiles(input: Array<MessageV2.WithParts & { info: Messag
   return Object.values(counts).filter((item) => item > 1).length
 }
 
+function metadataDiff(input: {
+  row: MessageV2.WithParts & { info: MessageV2.Assistant }
+  value: unknown
+}): Snapshot.FileDiff[] {
+  if (!object(input.value)) return []
+  const file = metadataString(input.value, ["relativePath", "filePath", "filepath", "path", "file"])
+  const additions = numberValue(input.value.additions)
+  const deletions = numberValue(input.value.deletions)
+  if (!file || additions === undefined || deletions === undefined) return []
+  return [
+    {
+      file: relative({ row: input.row, file }),
+      status: statusValue(input.value.status ?? input.value.type) ?? "modified",
+      additions,
+      deletions,
+      patch: stringValue(input.value.patch),
+    },
+  ]
+}
+
+function toolDiffs(input: Array<MessageV2.WithParts & { info: MessageV2.Assistant }>) {
+  return input.flatMap((row) =>
+    row.parts
+      .filter((part): part is MessageV2.ToolPart => part.type === "tool")
+      .flatMap((part) => {
+        if (part.state.status !== "completed") return []
+        if (!["edit", "write", "apply_patch"].includes(part.tool)) return []
+        return [
+          ...metadataDiff({ row, value: part.state.metadata.filediff }),
+          ...(Array.isArray(part.state.metadata.files)
+            ? part.state.metadata.files.flatMap((item) => metadataDiff({ row, value: item }))
+            : []),
+        ]
+      }),
+  )
+}
+
 function fileChange(input: {
   diffs?: Snapshot.FileDiff[]
   rows: Array<MessageV2.WithParts & { info: MessageV2.Assistant }>
 }): FileChangeV1 {
-  const list = (input.diffs ?? []).flatMap((item) => {
-    if (!item.file) return []
-    return [
-      {
-        file: item.file,
-        status: item.status ?? "modified",
-        language: language(item.file),
-        additions: item.additions,
-        deletions: item.deletions,
-        changed_lines: item.additions + item.deletions,
-      },
-    ]
-  })
+  const diffs = input.diffs ?? []
+  const fromTools = toolDiffs(input.rows)
+  const source = diffs.length
+    ? [
+        ...diffs,
+        ...fromTools.filter((item) => item.file && !diffs.some((diff) => diff.file === item.file)),
+      ]
+    : fromTools
+  const list = Array.from(
+    source
+      .flatMap((item) => {
+        if (!item.file) return []
+        return [
+          {
+            file: item.file,
+            status: item.status ?? "modified",
+            language: language(item.file),
+            additions: item.additions,
+            deletions: item.deletions,
+            changed_lines: item.additions + item.deletions,
+          },
+        ]
+      })
+      .reduce<
+        Map<
+          string,
+          {
+            file: string
+            status: string
+            language: string
+            additions: number
+            deletions: number
+            changed_lines: number
+          }
+        >
+      >((acc, item) => {
+        const hit = acc.get(item.file)
+        if (!hit) {
+          acc.set(item.file, item)
+          return acc
+        }
+        hit.status = item.status
+        hit.additions += item.additions
+        hit.deletions += item.deletions
+        hit.changed_lines = hit.additions + hit.deletions
+        return acc
+      }, new Map())
+      .values(),
+  )
   const added = list.reduce((acc, item) => acc + item.additions, 0)
   const deleted = list.reduce((acc, item) => acc + item.deletions, 0)
   return {

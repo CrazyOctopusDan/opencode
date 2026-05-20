@@ -156,15 +156,22 @@ describe("tool.write", () => {
       },
     )
 
-    it.instance("returns diff in metadata for existing files", () =>
+    it.instance("returns file diff in metadata for existing files", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "file.txt")
         yield* Effect.promise(() => fs.writeFile(filepath, "old", "utf-8"))
-        const result = yield* run({ filePath: filepath, content: "new" })
+        const result = yield* run({ filePath: filepath, content: "new\nvalue\n" })
 
         expect(result.metadata).toHaveProperty("filepath", filepath)
         expect(result.metadata).toHaveProperty("exists", true)
+        expect(result.metadata.filediff).toEqual({
+          file: filepath,
+          status: "modified",
+          additions: 2,
+          deletions: 1,
+          patch: expect.any(String),
+        })
       }),
     )
   })

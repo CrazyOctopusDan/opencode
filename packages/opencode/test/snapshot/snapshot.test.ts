@@ -95,6 +95,29 @@ const withGitConfigGlobal = <A, E, R>(config: string, self: Effect.Effect<A, E, 
   )
 
 it.instance(
+  "tracks file changes in directories without a source git repository",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+
+    yield* write(`${tmp.path}/algorithm.ts`, "export const add = (a: number, b: number) => a + b\n")
+
+    const after = yield* snapshot.track()
+    expect(after).toBeTruthy()
+    expect(yield* snapshot.diffFull(before!, after!)).toMatchObject([
+      {
+        file: "algorithm.ts",
+        status: "added",
+        additions: 1,
+        deletions: 0,
+      },
+    ])
+  }),
+)
+
+it.instance(
   "tracks deleted files correctly",
   withTrackedSnapshot(({ tmp, snapshot, before }) =>
     Effect.gen(function* () {
