@@ -53,7 +53,19 @@ jobs:
     needs:
       - version
       - build-cli
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: windows-2025
+            target: aarch64-pc-windows-msvc
+            platform_flag: --win --arm64
+            artifact: opencode-desktop-windows-arm64
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform_flag: --win
+            artifact: opencode-desktop-windows-x64
+    runs-on: ${{ matrix.settings.host }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +90,7 @@ jobs:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           OPENCODE_CHANNEL: prod
           OPENCODE_CLI_ARTIFACT: opencode-cli-windows
-          RUST_TARGET: x86_64-pc-windows-msvc
+          RUST_TARGET: ${{ matrix.settings.target }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
@@ -89,7 +101,7 @@ jobs:
           OPENCODE_CHANNEL: prod
 
       - name: Package
-        run: npx electron-builder --win --publish never --config electron-builder.config.ts
+        run: npx electron-builder ${{ matrix.settings.platform_flag }} --publish never --config electron-builder.config.ts
         working-directory: packages/desktop
         timeout-minutes: 60
         env:
@@ -97,5 +109,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: opencode-desktop-windows-x64
+          name: ${{ matrix.settings.artifact }}
           path: packages/desktop/dist/*

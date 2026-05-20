@@ -52,7 +52,19 @@ jobs:
     needs:
       - version
       - build-cli
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform_flag: --linux
+            artifact: opencode-desktop-linux-x64
+          - host: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform_flag: --linux --arm64
+            artifact: opencode-desktop-linux-arm64
+    runs-on: ${{ matrix.settings.host }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -74,9 +86,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/apt-cache
-          key: ${{ runner.os }}-desktop-electron-apt-${{ hashFiles('.github/workflows/build-desktop-linux.yml') }}
+          key: ${{ runner.os }}-${{ matrix.settings.target }}-desktop-electron-apt-${{ hashFiles('.github/workflows/build-desktop-linux.yml') }}
           restore-keys: |
-            ${{ runner.os }}-desktop-electron-apt-
+            ${{ runner.os }}-${{ matrix.settings.target }}-desktop-electron-apt-
 
       - name: Install desktop packaging dependencies
         run: |
@@ -92,7 +104,7 @@ jobs:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           OPENCODE_CHANNEL: prod
           OPENCODE_CLI_ARTIFACT: opencode-cli
-          RUST_TARGET: x86_64-unknown-linux-gnu
+          RUST_TARGET: ${{ matrix.settings.target }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
@@ -103,7 +115,7 @@ jobs:
           OPENCODE_CHANNEL: prod
 
       - name: Package
-        run: npx electron-builder --linux --publish never --config electron-builder.config.ts
+        run: npx electron-builder ${{ matrix.settings.platform_flag }} --publish never --config electron-builder.config.ts
         working-directory: packages/desktop
         timeout-minutes: 60
         env:
@@ -111,5 +123,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: opencode-desktop-linux-x64
+          name: ${{ matrix.settings.artifact }}
           path: packages/desktop/dist/*
