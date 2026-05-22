@@ -154,6 +154,35 @@ describe("Auth context TravelSky credential recovery", () => {
     })
   })
 
+  test("concurrent recover calls share one silent login", async () => {
+    remembered = {
+      username: "dummy-user",
+      password: "dummy-password",
+      remembered: true,
+      passwordAvailable: true,
+    }
+
+    let loginRequests = 0
+    platform.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST" && String(_input).endsWith("/global/logout")) {
+        authClears++
+        return new Response(null, { status: 204 })
+      }
+      loginRequests++
+      await Promise.resolve()
+      return new Response(JSON.stringify({ access_token: `token-${loginRequests}`, token_type: "Bearer", expires_in: 60 }))
+    }) as unknown as typeof fetch
+
+    await withAuth(async (auth) => {
+      await expect(Promise.all([auth.recover(), auth.recover(), auth.recover()])).resolves.toEqual([true, true, true])
+
+      expect(loginRequests).toBe(1)
+      expect(auth.loggedIn()).toBeTrue()
+      expect(auth.token()).toBe("token-1")
+      expect(saved).toEqual([{ username: "dummy-user", password: "dummy-password" }])
+    })
+  })
+
   test("recover clears auth state when remembered credentials are unavailable", async () => {
     await withAuth(async (auth) => {
       await auth.login("dummy-user", "dummy-password", true)

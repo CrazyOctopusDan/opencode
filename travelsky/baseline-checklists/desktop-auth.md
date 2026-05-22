@@ -60,9 +60,11 @@
 - 登录成功且勾选“记住我”时保存已记住凭据；未勾选时必须清理已保存凭据。
 - `auth.recover()` 只有在已记住凭据同时包含用户名和可用密码时才静默调用 `/global/login`；否则必须清理当前登录态并返回失败。
 - `authOperation` 竞态保护必须保留，旧 recovery 失败不能清空或覆盖更新的手动登录态。
+- `auth.recover()` 必须保持单飞：恢复进行中再次调用时复用同一个 Promise，启动期多个目录 session 列表同时 401 只能触发一次真实 `/global/login`。
 - `createAuthRecoveringFetch()` 必须在每次 SDK 请求发送前读取当前 `auth.token()` 并覆盖旧 Authorization，防止 SDK 初始化时捕获的旧 token 在恢复后继续造成首包 401。
 - `createAuthRecoveringFetch()` 遇到 401 时只能调用 `auth.recover()` 一次；恢复成功后必须用新 Bearer token 自动重试原请求一次；恢复失败、无新 token 或 retry 仍失败时不能无限循环。
 - `GlobalSDKProvider` 创建的主 SDK、`createClient()` 目录 SDK 和 event SDK 都必须使用 auth recovering fetch；否则发送消息 `/session/.../prompt_async` 或 event stream 在 sidecar 重启后仍会直接 401。
+- 启动期 `GET /session?directory=...&roots=true` 这类后台 session 列表请求遇到 local 401 时，应通过 SDK fetch 恢复并重试，不能为每个目录各弹一个错误 toast。
 - 本地 sidecar 401 恢复是标准 local token 恢复，不依赖 Tempo `success=false/code=401/message` 响应格式。
 - 登录页异步回填已记住凭据不能覆盖用户已经编辑过的表单。
 - 全局、目录和模型弹窗的 provider 查询必须复用 `loadProvidersQuery()` 的恢复逻辑；恢复成功后必须使用新建 SDK client 重新读取新 token 并重试一次。
@@ -85,12 +87,12 @@
 
 - 在 `packages/opencode` 目录运行：`bun test test/server/tempo-api.test.ts test/provider/model-policy.test.ts test/server/tempo-metric.test.ts`。
 - 在 `packages/opencode` 目录运行：`export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"; bun typecheck`。
-- 在 `packages/app` 目录运行：`bun test src/utils/server.test.ts src/travelsky/auth.test.ts src/context/auth.test.tsx src/context/global-sync.test.ts src/pages/login.test.ts`。
+- 在 `packages/app` 目录运行：`bun test src/utils/server.test.ts src/travelsky/auth.test.ts src/context/auth.test.tsx src/context/global-sync.test.ts src/pages/login.test.ts`，其中 `auth.test.tsx` 必须覆盖并发 `recover()` 单飞。
 - 在 `packages/app` 目录完整回归时运行：`bun test --preload ./happydom.ts ./src`。
 - 在 `packages/app` 目录运行：`export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"; bun typecheck`。
 - 在 `packages/desktop` 目录运行：`export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"; bun typecheck`。
 - 在仓库根目录运行：`git diff --check`。
-- 需要人工验证的 Desktop 场景：勾选“记住我”登录后关闭并重开，用户名和密码自动填入；旧 token 失效时发送消息静默重登并自动重试；旧 token 失效时模型列表静默恢复；未勾选时旧 token 失效回登录页；`safeStorage` 不可用时只填用户名；Tempo 数据上报 token 失效时不弹窗。
+- 需要人工验证的 Desktop 场景：勾选“记住我”登录后关闭并重开，用户名和密码自动填入；旧 token 失效时发送消息静默重登并自动重试；启动期多个目录 session 列表旧 token 失效时不出现满屏 401 toast；旧 token 失效时模型列表静默恢复；未勾选时旧 token 失效回登录页；`safeStorage` 不可用时只填用户名；Tempo 数据上报 token 失效时不弹窗。
 
 ## 停止条件
 

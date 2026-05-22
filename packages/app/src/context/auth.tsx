@@ -59,6 +59,7 @@ export function createAuthContext(input: {
   removePersisted: () => Promise<void> | void
 }) {
   let authOperation = 0
+  let recovery: Promise<boolean> | undefined
 
   const valid = () => {
     if (!input.store.accessToken) return false
@@ -147,22 +148,29 @@ export function createAuthContext(input: {
     loggedIn: valid,
     login,
     async recover() {
-      authOperation++
-      const operation = authOperation
-      const saved = await TravelSkyAuth.remembered(input.platform)
-      if (operation !== authOperation) return false
-      if (!saved.username || !saved.passwordAvailable || !saved.password) {
+      if (recovery) return recovery
+      const run = (async () => {
+        authOperation++
+        const operation = authOperation
+        const saved = await TravelSkyAuth.remembered(input.platform)
+        if (operation !== authOperation) return false
+        if (!saved.username || !saved.passwordAvailable || !saved.password) {
+          await clearFor(operation)
+          return false
+        }
+        const recovered = await loginFor(operation, saved.username, saved.password, true).catch(async () => {
+          await clearFor(operation)
+          return false
+        })
+        if (!recovered) return false
+        if (valid()) return true
         await clearFor(operation)
         return false
-      }
-      const recovered = await loginFor(operation, saved.username, saved.password, true).catch(async () => {
-        await clearFor(operation)
-        return false
+      })()
+      recovery = run
+      return run.finally(() => {
+        if (recovery === run) recovery = undefined
       })
-      if (!recovered) return false
-      if (valid()) return true
-      await clearFor(operation)
-      return false
     },
     logout: clear,
   }

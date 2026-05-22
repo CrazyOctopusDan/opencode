@@ -10,12 +10,14 @@
 - 服务端 `packages/opencode/src/server/auth-token.ts` 的 local token session 使用内存 `Map`，sidecar 重启后不再认识 Desktop 前端落盘的旧 Bearer token。
 - 服务端 `packages/opencode/src/server/tempo-session.ts` 的 Tempo token session 也使用内存 `Map`。
 - Desktop 重启后，前端保存的 local token 还未过期，但新服务端进程不再认识该 token，也没有对应 Tempo session。此时用户可能直接进入操作页，但发送消息、事件流、模型列表或数据上报会在不同链路上失效。
+- 启动后的全局同步会并行加载多个目录的 session 列表，例如 `GET /session?directory=...&roots=true`。这些请求如果同时遇到旧 local token 401，会同时触发恢复；恢复没有单飞保护时，多次 `auth.recover()` 会互相推进 `authOperation`，导致部分后台请求恢复失败并弹出“无法加载 xx 的会话”。
 
 ## 目标
 
 - 勾选“记住我”后，Desktop 可以安全保存用户名和密码，并在重启后自动填入。
 - 勾选“记住我”后，如果旧 local token 在新服务端进程中失效，Desktop 可以静默重新登录并换取新 token。
 - 通用 SDK 请求遇到本地 sidecar 401 时，Desktop 可以用已记住凭据静默重新 `/global/login`，拿到新 local token 后自动重试当前请求一次。
+- 启动期多个后台请求同时 401 时，只执行一次静默恢复，其余请求等待同一个恢复结果，避免满屏 session 加载失败 toast。
 - Tempo 明确返回 token 失效时，模型列表链路应自动恢复或回到登录页，不继续弹大量错误。
 - 数据上报链路遇到 Tempo token 失效时不打扰用户，允许静默跳过本次上报并记录调试信息。
 - 实现尽量集中在 TravelSky/Tempo 二开文件或二开适配层中。公司 Tempo token 语义不扩散到源仓库通用接口；但本地 sidecar 401 属于 Desktop local token 失效，需要在全局 SDK fetch 适配层统一恢复。
@@ -40,6 +42,7 @@
   - `message` 以 `token校验失败，失败原因` 开头
 - 公司 Tempo token 失效恢复覆盖公司二开接口链路：模型列表和数据上报。
 - 本地 sidecar 401 恢复覆盖 Desktop 全局 SDK 请求：先使用当前 `auth.token()` 注入 Bearer，遇到 401 后调用 `auth.recover()`，恢复成功后用新 token 重试原请求一次，恢复失败则保留原始 401。
+- `auth.recover()` 必须是单飞的：恢复进行中再次调用时复用同一个 Promise，不能并发多次 `/global/login`，也不能让旧恢复操作互相清理或覆盖登录态。
 
 ## 文件落点
 
@@ -49,6 +52,7 @@
   - 扩展登录入口支持 `remember` 参数。
   - 保留现有 `accessToken`、`username`、`expiresAt` 持久化。
   - 增加恢复能力：当前 token 被公司接口判定失效时，读取记住我凭据并静默重新登录；没有可用凭据时清理登录态。
+  - 并发恢复单飞：启动期多个目录 session 列表、event stream、provider 查询同时 401 时，只允许一个真实恢复请求。
 
 - `packages/app/src/utils/server.ts`
   - 新增 `createAuthRecoveringFetch()`。
@@ -123,6 +127,7 @@
 6. 恢复成功后，SDK fetch 适配层用新 token 自动重试原请求一次。
 7. 没有可用密码或恢复失败时，清理 auth store，当前请求保留原始 401，并由已有 UI 错误处理或登录恢复链路接管。
 8. 同一请求只重试一次，避免无限登录和无限重发。
+9. 多个请求同时触发恢复时，共享同一次 `auth.recover()` 结果，避免后台 session 列表每个目录各弹一个 401 toast。
 
 ## Tempo 模型列表恢复数据流
 
@@ -171,12 +176,14 @@
 - TravelSky auth helper：无密码、解密不可用或登录失败时 recover 失败并清理登录态。
 - Login 页面或 auth context：勾选“记住我”保存凭据，未勾选清理凭据。
 - SDK fetch：本地 sidecar 401 后 recover 并重试一次；recover 失败不重试；首包使用最新 token 覆盖旧 Authorization。
+- Auth context：并发 `recover()` 调用只发起一次静默登录，全部调用共享结果。
 
 人工验证：
 
 - 勾选“记住我”登录后关闭并重开 Desktop，用户名和密码自动填入。
 - 勾选“记住我”登录后关闭并重开 Desktop，旧 token 失效时模型列表可静默恢复。
 - 勾选“记住我”登录后关闭并重开 Desktop，旧 token 失效时发送消息可静默重新登录并自动重试。
+- 勾选“记住我”登录后关闭并重开 Desktop，启动期多个目录 session 列表旧 token 失效时不出现满屏 401 toast。
 - 未勾选“记住我”登录后关闭并重开 Desktop，旧 token 失效时回到登录页。
 - `safeStorage` 不可用时只保存用户名，不保存密码。
 - Tempo 数据上报 token 失效时不弹窗、不影响对话。
@@ -193,6 +200,7 @@
 - Desktop 记住我只在安全加密可用时保存密码。
 - 旧 local token 失效后优先使用已记住凭据静默重登。
 - 通用 SDK 请求遇到本地 sidecar 401 时必须静默重登并重试一次。
+- 并发 local 401 恢复必须单飞，不能因为多个后台请求同时恢复而互相失败、重复弹错。
 - Tempo 模型列表 token 失效会触发恢复或回登录页。
 - Tempo 数据上报 token 失效不打扰用户。
 - 公司 Tempo token 失效逻辑不扩散到源仓库通用接口。
