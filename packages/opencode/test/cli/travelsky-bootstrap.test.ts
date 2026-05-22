@@ -68,6 +68,41 @@ describe("travelsky bootstrap", () => {
     expect(auth).toBe("Bearer new-token")
   })
 
+  test("logs in again when the stored token is rejected by the local server", async () => {
+    await write({
+      access_token: "stored-token",
+      expires_in: 3600,
+      username: "old",
+    })
+    spyOn(Login, "prompt").mockResolvedValue({
+      access_token: "new-token",
+      token_type: "Bearer",
+      expires_in: 3600,
+      username: "new",
+    })
+
+    const headers: string[] = []
+    const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") ?? ""
+      headers.push(authorization)
+      if (authorization === "Bearer stored-token") return new Response("", { status: 401 })
+      return new Response(JSON.stringify({ all: [{ id: "travelsky", name: "travelSky" }] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    }
+
+    const auth = await ensureLogin({
+      base: "http://local",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    })
+
+    expect(auth).toBe("Bearer new-token")
+    expect(headers).toEqual(["Bearer stored-token", "Bearer stored-token", "Bearer new-token"])
+  })
+
   test("accepts travelSky from config providers fallback", async () => {
     await write({
       access_token: "stored-token",

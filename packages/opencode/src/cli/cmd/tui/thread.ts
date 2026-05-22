@@ -212,18 +212,6 @@ export const TuiThreadCommand = cmd({
             events: createEventSource(client),
           }
 
-      try {
-        await validateSession({
-          url: transport.url,
-          sessionID: args.session,
-          directory: cwd,
-          fetch: transport.fetch,
-        })
-      } catch (error) {
-        UI.error(errorMessage(error))
-        process.exitCode = 1
-        return
-      }
       const auth = await ensureLogin({
         base: transport.url,
         fetch: transport.fetch,
@@ -233,6 +221,19 @@ export const TuiThreadCommand = cmd({
       })
       if (!auth) {
         UI.error("TravelSky login cancelled")
+        process.exitCode = 1
+        return
+      }
+      try {
+        await validateSession({
+          url: transport.url,
+          sessionID: args.session,
+          directory: cwd,
+          fetch: transport.fetch,
+          headers: authHeaders(auth),
+        })
+      } catch (error) {
+        UI.error(errorMessage(error))
         process.exitCode = 1
         return
       }

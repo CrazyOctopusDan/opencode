@@ -34,7 +34,8 @@ CLI 改造完全复用上述协议，不新增后端字段，不改响应结构�
    - 否则弹用户名/密码，调用 `/global/login`。
    - 登录失败：`Retry/Exit`。
 3. 登录后将 `Authorization: Bearer ...` 传给 `tui({ headers })`。
-4. TUI 内 `/models`、`/connect` 继续走现有 sync/provider 数据链路。
+4. 如果启动时带了 `--session`，必须在登录成功后用同一个 `Authorization` 执行 `validateSession()`。
+5. TUI 内 `/models`、`/connect` 继续走现有 sync/provider 数据链路。
 
 ## CLI 实现落点（文件映射）
 - `packages/opencode/src/cli/travelsky/auth-store.ts`
@@ -49,6 +50,7 @@ CLI 改造完全复用上述协议，不新增后端字段，不改响应结构�
   - `ensureLogin()`：复用 token -> 失效则登录 -> 预检 `/provider` 与 `/config/providers`
 - `packages/opencode/src/cli/cmd/tui/thread.ts`
   - `tui(...)` 前执行 `ensureLogin()`
+  - `validateSession()` 必须在 `ensureLogin()` 后执行，并携带同一个 Bearer，避免旧 token 或缺 header 导致 session 校验 401
   - 登录成功后通过 `tui({ headers })` 注入 Bearer
 - `packages/opencode/src/cli/cmd/tui/app.tsx`
   - `/connect` 与 `/models` 直接进入 TravelSky provider 的模型选择
@@ -63,4 +65,5 @@ CLI 改造完全复用上述协议，不新增后端字段，不改响应结构�
 ## 失败与边界
 - 非 TTY 场景且需要登录：直接报错退出（避免不可交互卡死）。
 - 本地 token 存在但服务端会话失效：预检失败后清理本地 token，并重新走登录流程。
+- 带 `--session` 启动时，session 校验必须使用登录后的新 token，不能在登录门禁前访问受保护接口。
 - 登录成功但 provider 列表中无 TravelSky：提示并 `Retry/Exit`。

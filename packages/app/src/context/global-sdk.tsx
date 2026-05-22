@@ -2,7 +2,7 @@ import type { Event } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, onCleanup } from "solid-js"
-import { createSdkForServer } from "@/utils/server"
+import { createAuthRecoveringFetch, createSdkForServer } from "@/utils/server"
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
@@ -34,10 +34,20 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     const currentServer = server.current
     if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
+    const fetchWithAuthRecovery = createAuthRecoveringFetch({
+      fetch: platform.fetch,
+      token: () => auth.token(),
+      recover: () => auth.recover(),
+    })
+    const eventFetchWithAuthRecovery = createAuthRecoveringFetch({
+      fetch: eventFetch,
+      token: () => auth.token(),
+      recover: () => auth.recover(),
+    })
 
     const eventSdk = createSdkForServer({
       signal: abort.signal,
-      fetch: eventFetch,
+      fetch: eventFetchWithAuthRecovery,
       server: currentServer.http,
       token: auth.token(),
     })
@@ -304,7 +314,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     const sdk = createSdkForServer({
       server: server.current.http,
-      fetch: platform.fetch,
+      fetch: fetchWithAuthRecovery,
       throwOnError: true,
       token: auth.token(),
     })
@@ -322,7 +332,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (!s) throw new Error(language.t("error.globalSDK.serverNotAvailable"))
         return createSdkForServer({
           server: s.http,
-          fetch: platform.fetch,
+          fetch: fetchWithAuthRecovery,
           token: auth.token(),
           ...opts,
         })
