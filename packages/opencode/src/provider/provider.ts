@@ -1850,7 +1850,7 @@ export const layer = Layer.effect(
 
     const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderID, modelID: ModelID) {
       const s = yield* InstanceState.get(state)
-      const provider = s.providers[providerID]
+      const provider = s.providers[providerID] ?? (yield* refreshTravelSkyModel(s, providerID, modelID))
       if (!provider) {
         const catalogProvider = s.catalog[providerID]
         const suggestions = catalogProvider
@@ -1861,7 +1861,7 @@ export const layer = Layer.effect(
         return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
       }
 
-      const info = provider.models[modelID]
+      const info = provider.models[modelID] ?? (yield* refreshTravelSkyModel(s, providerID, modelID))?.models[modelID]
       if (!info) {
         const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
         const suggestions = current.length
@@ -1870,6 +1870,19 @@ export const layer = Layer.effect(
         return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
       }
       return info
+    })
+
+    const refreshTravelSkyModel = Effect.fn("Provider.refreshTravelSkyModel")(function* (
+      s: State,
+      providerID: ProviderID,
+      modelID: ModelID,
+    ) {
+      if (providerID.toLowerCase() !== "travelsky") return
+      const policy = yield* Effect.promise(() => ModelPolicy.snapshot(true))
+      const provider = Object.values(fromModelPolicy(policy.list)).find((item) => item.id.toLowerCase() === "travelsky")
+      if (!policy.enabled || !provider?.models[modelID]) return
+      s.providers[providerID] = provider
+      return provider
     })
 
     const getLanguage = Effect.fn("Provider.getLanguage")(function* (model: Model) {

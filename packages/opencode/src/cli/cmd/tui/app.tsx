@@ -66,7 +66,7 @@ import { createTuiApi } from "@/cli/cmd/tui/plugin/api"
 import type { RouteMap } from "@/cli/cmd/tui/plugin/api"
 import { createTuiAttention } from "@/cli/cmd/tui/attention"
 import { FormatError, FormatUnknownError } from "@/cli/error"
-import { isTravelSky } from "@/cli/travelsky/provider"
+import { travelSkyProviderID } from "@/cli/travelsky/provider"
 import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
@@ -282,13 +282,12 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
-  const travel = createMemo(() => {
-    const one = sync.data.provider_next.all.find((item) => isTravelSky(item.id))
-    if (one) return one.id
-    const two = sync.data.provider.find((item) => isTravelSky(item.id))
-    if (two) return two.id
-    return "travelSky"
-  })
+  const travel = createMemo(() =>
+    travelSkyProviderID({
+      provider: sync.data.provider,
+      providerNext: sync.data.provider_next.all,
+    }),
+  )
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
   const routeView = (name: string) => {

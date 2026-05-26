@@ -8,6 +8,9 @@ import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
 import { markPluginDependenciesReady } from "../fixture/plugin"
 import { testEffect } from "../lib/effect"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { TempoSession } from "@/server/tempo-session"
+import { ModelPolicy } from "@/provider/model-policy"
 
 void Log.init({ print: false })
 
@@ -380,6 +383,58 @@ describe("provider HttpApi", () => {
       expect(hasProviderWithFetch(configBody, "providers")).toBe(false)
       expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
       expect(hasNonZeroModelCost(configBody, "providers", "google")).toBe(true)
+    }),
+    projectOptions,
+  )
+
+  it.instance(
+    "marks TravelSky policy models connected for desktop model selection",
+    Effect.gen(function* () {
+      const original = {
+        fetch: globalThis.fetch,
+        tempoBase: Flag.OPENCODE_TEMPO_BASE_URL,
+      }
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(async () => {
+          globalThis.fetch = original.fetch
+          Flag.OPENCODE_TEMPO_BASE_URL = original.tempoBase
+          TempoSession.remove("desktop-token")
+          await ModelPolicy.snapshot(true, "missing-desktop-token")
+        }),
+      )
+      Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+      TempoSession.set("desktop-token", { token: "upstream-token" })
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: [
+              {
+                id: "openai",
+                name: "OpenAI Compatible",
+                api: "https://tempo.test/openai/v1",
+                models: [{ id: "Qwen3.5-27B", name: "Qwen3.5-27B" }],
+              },
+            ],
+          }),
+        )) as unknown as typeof fetch
+
+      const instance = yield* TestInstance
+      const response = yield* Effect.promise(() =>
+        Promise.resolve(
+          app().request("/provider", {
+            headers: {
+              "x-opencode-directory": instance.directory,
+              Authorization: "Bearer desktop-token",
+            },
+          }),
+        ),
+      )
+      const body = yield* Effect.promise(() => response.json())
+
+      expect(response.status).toBe(200)
+      expect(providerByID(body, "all", "travelSky")).toBeDefined()
+      expect(isRecord(body) && Array.isArray(body.connected) ? body.connected : []).toContain("travelSky")
     }),
     projectOptions,
   )

@@ -19,6 +19,7 @@
 - Desktop 模型来源（后端 provider 接口）：
   - `packages/app/src/components/dialog-select-model.tsx`
   - 调用 `provider.list()`，按 provider 结果生成可选模型（不走本地静态模型源）
+  - 模型弹窗会按 `/provider.connected` 过滤可选模型，因此后端从 `llm/list` 合成 TravelSky provider 时，`all` 与 `connected` 必须同时包含 `travelSky`
 - 后端接口定义（不变）：
   - `packages/opencode/src/server/routes/global.ts`：`POST /global/login`
   - `packages/opencode/src/server/routes/provider.ts`：`GET /provider`
@@ -61,6 +62,9 @@ CLI 改造完全复用上述协议，不新增后端字段，不改响应结构�
 - `/connect`：不再先显示 provider 总列表，直接进入 TravelSky 的模型选择。
 - `/models`：打开模型选择时固定 `providerID=travelSky/travelsky`，只看 TravelSky 模型。
 - provider 识别统一按不区分大小写匹配 `travelsky`。
+- CLI 内部实际选中和提交模型时，必须优先使用 `sync.data.provider` 中的规范 provider id（当前为 `travelSky`），不能把 `provider_next` 中可能出现的小写 `travelsky` 写入当前模型，否则 prompt 会用 `travelsky/<model>` 触发 `Model not Found`。
+- prompt 执行前的 Provider 服务如果早于登录初始化，必须用当前 Tempo session 强制刷新一次 `llm/list` 模型策略；只更新 UI 模型列表不够，发送消息时仍会走 Provider 内存态。
+- Desktop 和 CLI 共用后端 `/provider` 与 `Provider.getModel()`，因此“模型可见”和“模型可调用”都要以 `llm/list` 的最新 TravelSky policy 为准。
 
 ## 失败与边界
 - 非 TTY 场景且需要登录：直接报错退出（避免不可交互卡死）。

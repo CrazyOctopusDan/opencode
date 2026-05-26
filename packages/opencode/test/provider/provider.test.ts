@@ -21,9 +21,16 @@ import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Config } from "@/config/config"
 import { Auth } from "@/auth"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { TempoSession } from "@/server/tempo-session"
+import { ModelPolicy } from "@/provider/model-policy"
 
 const env = makeRuntime(Env.Service, Env.defaultLayer)
 const originalEnv = new Map<string, string | undefined>()
+const original = {
+  fetch: globalThis.fetch,
+  tempoBase: Flag.OPENCODE_TEMPO_BASE_URL,
+}
 
 function rememberEnv(k: string) {
   if (!originalEnv.has(k)) originalEnv.set(k, process.env[k])
@@ -52,6 +59,10 @@ afterEach(async () => {
     else process.env[key] = value
   }
   originalEnv.clear()
+  globalThis.fetch = original.fetch
+  Flag.OPENCODE_TEMPO_BASE_URL = original.tempoBase
+  TempoSession.remove("provider-refresh-token")
+  await ModelPolicy.snapshot(true, "missing-provider-refresh-token")
   await disposeAllInstances()
 })
 
@@ -686,6 +697,43 @@ test("provider api field sets model api.url", async () => {
       const providers = await list(ctx)
       // api field is stored on model.api.url, used by getSDK to set baseURL
       expect(providers[ProviderID.make("custom-api")].models["model-1"].api.url).toBe("https://api.example.com/v1")
+    },
+  })
+})
+
+test("refreshes TravelSky model policy when provider state was initialized before login", async () => {
+  Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        data: [
+          {
+            id: "openai",
+            name: "OpenAI Compatible",
+            api: "https://tempo.test/openai/v1",
+            models: [
+              {
+                id: "Qwen3.5-27B",
+                name: "Qwen3.5-27B",
+              },
+            ],
+          },
+        ],
+      }),
+    )) as unknown as typeof fetch
+
+  await using tmp = await tmpdir()
+  await withTestInstance({
+    directory: tmp.path,
+    fn: async (ctx) => {
+      expect(await getProvider(ProviderID.make("travelSky"), ctx)).toBeUndefined()
+
+      TempoSession.set("provider-refresh-token", { token: "upstream-token" })
+
+      const model = await getModel(ProviderID.make("travelSky"), ModelID.make("Qwen3.5-27B"), ctx)
+      expect(String(model.id)).toBe("Qwen3.5-27B")
+      expect(model.api.url).toBe("https://tempo.test/openai/v1")
     },
   })
 })
