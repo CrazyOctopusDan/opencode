@@ -1,18 +1,27 @@
-import { describe, expect } from "bun:test"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { afterEach, describe, expect } from "bun:test"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Effect, Layer } from "effect"
 import path from "path"
-import { Server } from "../../src/server/server"
-import * as Log from "@opencode-ai/core/util/log"
 import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
 import { markPluginDependenciesReady } from "../fixture/plugin"
 import { testEffect } from "../lib/effect"
+import { httpApiLayer, request } from "./httpapi-layer"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { TempoSession } from "@/server/tempo-session"
 import { ModelPolicy } from "@/provider/model-policy"
 
-void Log.init({ print: false })
+const original = {
+  fetch: globalThis.fetch,
+  tempoBase: Flag.OPENCODE_TEMPO_BASE_URL,
+}
+
+afterEach(async () => {
+  globalThis.fetch = original.fetch
+  Flag.OPENCODE_TEMPO_BASE_URL = original.tempoBase
+  TempoSession.remove("desktop-token")
+  await ModelPolicy.snapshot(true, "missing-desktop-token")
+})
 
 const testStateLayer = Layer.effectDiscard(
   Effect.acquireRelease(
@@ -21,15 +30,11 @@ const testStateLayer = Layer.effectDiscard(
   ),
 )
 
-const it = testEffect(Layer.mergeAll(testStateLayer, AppFileSystem.defaultLayer))
+const it = testEffect(Layer.mergeAll(testStateLayer, FSUtil.defaultLayer, httpApiLayer))
 const projectOptions = { config: { formatter: false, lsp: false } }
 const providerID = "test-oauth-parity"
 const oauthURL = "https://example.com/oauth"
 const oauthInstructions = "Finish OAuth"
-
-function app() {
-  return Server.Default().app
-}
 
 function providerListHasFetch(list: unknown) {
   if (!Array.isArray(list)) return false
@@ -80,48 +85,41 @@ function hasProviderMutationMarker(input: unknown, key: "all" | "providers", id:
 }
 
 function requestAuthorize(input: {
-  app: ReturnType<typeof app>
   providerID: string
   method: number
   headers: HeadersInit
   inputs?: Record<string, string>
 }) {
-  return Effect.promise(async () => {
-    const response = await input.app.request(`/provider/${input.providerID}/oauth/authorize`, {
+  return Effect.gen(function* () {
+    const response = yield* request(`/provider/${input.providerID}/oauth/authorize`, {
       method: "POST",
       headers: input.headers,
       body: JSON.stringify({ method: input.method, ...(input.inputs ? { inputs: input.inputs } : {}) }),
     })
     return {
       status: response.status,
-      body: await response.text(),
+      body: yield* response.text,
     }
   })
 }
 
-function requestCallback(input: {
-  app: ReturnType<typeof app>
-  providerID: string
-  method: number
-  headers: HeadersInit
-  code?: string
-}) {
-  return Effect.promise(async () => {
-    const response = await input.app.request(`/provider/${input.providerID}/oauth/callback`, {
+function requestCallback(input: { providerID: string; method: number; headers: HeadersInit; code?: string }) {
+  return Effect.gen(function* () {
+    const response = yield* request(`/provider/${input.providerID}/oauth/callback`, {
       method: "POST",
       headers: input.headers,
       body: JSON.stringify({ method: input.method, ...(input.code ? { code: input.code } : {}) }),
     })
     return {
       status: response.status,
-      body: await response.text(),
+      body: yield* response.text,
     }
   })
 }
 
 function writeProviderAuthPlugin(dir: string) {
   return Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
     yield* Effect.promise(() => markPluginDependenciesReady(path.join(dir, ".opencode")))
 
     yield* fs.writeWithDirs(
@@ -156,7 +154,7 @@ function writeProviderAuthPlugin(dir: string) {
 
 function writeProviderAuthValidationPlugin(dir: string) {
   return Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
     yield* Effect.promise(() => markPluginDependenciesReady(path.join(dir, ".opencode")))
 
     yield* fs.writeWithDirs(
@@ -198,7 +196,7 @@ function writeProviderAuthValidationPlugin(dir: string) {
 
 function writeFunctionOptionsPlugin(dir: string) {
   return Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
     yield* Effect.promise(() => markPluginDependenciesReady(path.join(dir, ".opencode")))
 
     yield* fs.writeWithDirs(
@@ -230,7 +228,7 @@ function writeFunctionOptionsPlugin(dir: string) {
 
 function writeProviderModelsMutationPlugin(dir: string) {
   return Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
     yield* Effect.promise(() => markPluginDependenciesReady(path.join(dir, ".opencode")))
 
     yield* fs.writeWithDirs(
@@ -277,16 +275,30 @@ function setEnvScoped(key: string, value: string) {
 }
 
 describe("provider HttpApi", () => {
+  it.instance.skip(
+    "returns public v2 provider not found errors",
+    Effect.gen(function* () {
+      const directory = (yield* TestInstance).directory
+      const response = yield* request("/api/provider/missing", {
+        headers: { "x-opencode-directory": directory },
+      })
+
+      expect(response.status).toBe(404)
+      expect(yield* response.json).toEqual({
+        _tag: "ProviderNotFoundError",
+        providerID: "missing",
+        message: "Provider not found: missing",
+      })
+    }),
+    projectOptions,
+  )
+
   it.instance(
     "serves OAuth authorize response shapes",
     Effect.gen(function* () {
-      const instance = yield* TestInstance
-      yield* writeProviderAuthPlugin(instance.directory)
-      const headers = { "x-opencode-directory": instance.directory, "content-type": "application/json" }
-      const server = app()
-
+      const directory = (yield* TestInstance).directory
+      const headers = { "x-opencode-directory": directory, "content-type": "application/json" }
       const api = yield* requestAuthorize({
-        app: server,
         providerID,
         method: 0,
         headers,
@@ -298,7 +310,6 @@ describe("provider HttpApi", () => {
       expect(api).toEqual({ status: 200, body: "null" })
 
       const oauth = yield* requestAuthorize({
-        app: server,
         providerID,
         method: 1,
         headers,
@@ -309,21 +320,19 @@ describe("provider HttpApi", () => {
         instructions: oauthInstructions,
       })
     }),
-    projectOptions,
+    { ...projectOptions, init: writeProviderAuthPlugin },
     30000,
   )
 
   it.instance(
     "returns declared provider auth validation errors",
     Effect.gen(function* () {
-      const instance = yield* TestInstance
-      yield* writeProviderAuthValidationPlugin(instance.directory)
+      const directory = (yield* TestInstance).directory
       const response = yield* requestAuthorize({
-        app: app(),
         providerID: "test-oauth-validation",
         method: 0,
         inputs: { token: "nope" },
-        headers: { "x-opencode-directory": instance.directory, "content-type": "application/json" },
+        headers: { "x-opencode-directory": directory, "content-type": "application/json" },
       })
 
       expect(response.status).toBe(400)
@@ -332,19 +341,18 @@ describe("provider HttpApi", () => {
         data: { field: "token", message: "Token must be ok" },
       })
     }),
-    projectOptions,
+    { ...projectOptions, init: writeProviderAuthValidationPlugin },
     30000,
   )
 
   it.instance(
     "returns declared provider auth callback errors",
     Effect.gen(function* () {
-      const instance = yield* TestInstance
+      const directory = (yield* TestInstance).directory
       const response = yield* requestCallback({
-        app: app(),
         providerID,
         method: 0,
-        headers: { "x-opencode-directory": instance.directory, "content-type": "application/json" },
+        headers: { "x-opencode-directory": directory, "content-type": "application/json" },
       })
 
       expect(response.status).toBe(400)
@@ -360,48 +368,55 @@ describe("provider HttpApi", () => {
   it.instance(
     "serves provider lists when auth loaders add runtime fetch options",
     Effect.gen(function* () {
-      const instance = yield* TestInstance
-      yield* writeFunctionOptionsPlugin(instance.directory)
+      const directory = (yield* TestInstance).directory
       yield* setEnvScoped(
         "OPENCODE_AUTH_CONTENT",
         JSON.stringify({
           google: { type: "oauth", refresh: "dummy", access: "dummy", expires: 9999999999999 },
         }),
       )
-      const headers = { "x-opencode-directory": instance.directory }
-      const providerResponse = yield* Effect.promise(() => Promise.resolve(app().request("/provider", { headers })))
-      const configResponse = yield* Effect.promise(() =>
-        Promise.resolve(app().request("/config/providers", { headers })),
-      )
+      const headers = { "x-opencode-directory": directory }
+      const providerResponse = yield* request("/provider", { headers })
+      const configResponse = yield* request("/config/providers", { headers })
 
       expect(providerResponse.status).toBe(200)
       expect(configResponse.status).toBe(200)
 
-      const providerBody = yield* Effect.promise(() => providerResponse.json())
-      const configBody = yield* Effect.promise(() => configResponse.json())
+      const providerBody = yield* providerResponse.json
+      const configBody = yield* configResponse.json
       expect(hasProviderWithFetch(providerBody, "all")).toBe(false)
       expect(hasProviderWithFetch(configBody, "providers")).toBe(false)
       expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
       expect(hasNonZeroModelCost(configBody, "providers", "google")).toBe(true)
     }),
-    projectOptions,
+    { ...projectOptions, init: writeFunctionOptionsPlugin },
   )
 
   it.instance(
-    "marks TravelSky policy models connected for desktop model selection",
+    "keeps provider.models hook input mutations out of provider state",
     Effect.gen(function* () {
-      const original = {
-        fetch: globalThis.fetch,
-        tempoBase: Flag.OPENCODE_TEMPO_BASE_URL,
-      }
-      yield* Effect.addFinalizer(() =>
-        Effect.promise(async () => {
-          globalThis.fetch = original.fetch
-          Flag.OPENCODE_TEMPO_BASE_URL = original.tempoBase
-          TempoSession.remove("desktop-token")
-          await ModelPolicy.snapshot(true, "missing-desktop-token")
-        }),
-      )
+      const directory = (yield* TestInstance).directory
+
+      const headers = { "x-opencode-directory": directory }
+      const providerResponse = yield* request("/provider", { headers })
+      const configResponse = yield* request("/config/providers", { headers })
+
+      expect(providerResponse.status).toBe(200)
+      expect(configResponse.status).toBe(200)
+
+      const providerBody = yield* providerResponse.json
+      const configBody = yield* configResponse.json
+      expect(hasProviderMutationMarker(providerBody, "all", "google")).toBe(false)
+      expect(hasProviderMutationMarker(configBody, "providers", "google")).toBe(false)
+      expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
+    }),
+    { ...projectOptions, init: writeProviderModelsMutationPlugin },
+  )
+
+  it.instance(
+    "includes TravelSky in connected providers when Tempo returns models",
+    Effect.gen(function* () {
+      yield* Effect.promise(() => ModelPolicy.snapshot(true, "missing-desktop-token"))
       Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
       TempoSession.set("desktop-token", { token: "upstream-token" })
       globalThis.fetch = (async () =>
@@ -419,46 +434,18 @@ describe("provider HttpApi", () => {
           }),
         )) as unknown as typeof fetch
 
-      const instance = yield* TestInstance
-      const response = yield* Effect.promise(() =>
-        Promise.resolve(
-          app().request("/provider", {
-            headers: {
-              "x-opencode-directory": instance.directory,
-              Authorization: "Bearer desktop-token",
-            },
-          }),
-        ),
-      )
-      const body = yield* Effect.promise(() => response.json())
+      const directory = (yield* TestInstance).directory
+      const response = yield* request("/provider", {
+        headers: {
+          "x-opencode-directory": directory,
+          Authorization: "Bearer desktop-token",
+        },
+      })
+      const body = yield* response.json
 
       expect(response.status).toBe(200)
       expect(providerByID(body, "all", "travelSky")).toBeDefined()
       expect(isRecord(body) && Array.isArray(body.connected) ? body.connected : []).toContain("travelSky")
-    }),
-    projectOptions,
-  )
-
-  it.instance(
-    "keeps provider.models hook input mutations out of provider state",
-    Effect.gen(function* () {
-      const instance = yield* TestInstance
-      yield* writeProviderModelsMutationPlugin(instance.directory)
-
-      const headers = { "x-opencode-directory": instance.directory }
-      const providerResponse = yield* Effect.promise(() => Promise.resolve(app().request("/provider", { headers })))
-      const configResponse = yield* Effect.promise(() =>
-        Promise.resolve(app().request("/config/providers", { headers })),
-      )
-
-      expect(providerResponse.status).toBe(200)
-      expect(configResponse.status).toBe(200)
-
-      const providerBody = yield* Effect.promise(() => providerResponse.json())
-      const configBody = yield* Effect.promise(() => configResponse.json())
-      expect(hasProviderMutationMarker(providerBody, "all", "google")).toBe(false)
-      expect(hasProviderMutationMarker(configBody, "providers", "google")).toBe(false)
-      expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
     }),
     projectOptions,
   )

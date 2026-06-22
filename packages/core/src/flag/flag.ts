@@ -1,7 +1,7 @@
 import { Config } from "effect"
 import { InstallationChannel } from "../installation/version"
 
-function truthy(key: string) {
+export function truthy(key: string) {
   const value = process.env[key]?.toLowerCase()
   return value === "true" || value === "1"
 }
@@ -27,6 +27,11 @@ const OPENCODE_DISABLE_CLAUDE_CODE = truthy("OPENCODE_DISABLE_CLAUDE_CODE")
 const OPENCODE_DISABLE_CLAUDE_CODE_SKILLS =
   OPENCODE_DISABLE_CLAUDE_CODE || truthy("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS")
 const copy = process.env["OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT"]
+const fff = process.env["OPENCODE_DISABLE_FFF"]
+
+function enabledByExperimental(key: string) {
+  return process.env[key] === undefined ? truthy("OPENCODE_EXPERIMENTAL") : truthy(key)
+}
 
 export const Flag = {
   OTEL_EXPORTER_OTLP_ENDPOINT: process.env["OTEL_EXPORTER_OTLP_ENDPOINT"],
@@ -57,6 +62,7 @@ export const Flag = {
   OPENCODE_SERVER_PASSWORD: process.env["OPENCODE_SERVER_PASSWORD"],
   OPENCODE_SERVER_USERNAME: process.env["OPENCODE_SERVER_USERNAME"],
   OPENCODE_ENABLE_QUESTION_TOOL: truthy("OPENCODE_ENABLE_QUESTION_TOOL"),
+  OPENCODE_DISABLE_FFF: fff === undefined ? process.platform === "win32" : truthy("OPENCODE_DISABLE_FFF"),
 
   // Experimental
   OPENCODE_EXPERIMENTAL,
@@ -104,13 +110,16 @@ export const Flag = {
   OPENCODE_EXPERIMENTAL_HTTPAPI:
     truthy("OPENCODE_EXPERIMENTAL_HTTPAPI") ||
     (!falsy("OPENCODE_EXPERIMENTAL_HTTPAPI") && HTTPAPI_DEFAULT_ON_CHANNELS.has(InstallationChannel)),
-  OPENCODE_EXPERIMENTAL_WORKSPACES: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_WORKSPACES"),
+  OPENCODE_EXPERIMENTAL_WORKSPACES: enabledByExperimental("OPENCODE_EXPERIMENTAL_WORKSPACES"),
   OPENCODE_EXPERIMENTAL_EVENT_SYSTEM: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_EVENT_SYSTEM"),
 
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OPENCODE_DISABLE_PROJECT_CONFIG() {
     return truthy("OPENCODE_DISABLE_PROJECT_CONFIG")
+  },
+  get OPENCODE_EXPERIMENTAL_REFERENCES() {
+    return enabledByExperimental("OPENCODE_EXPERIMENTAL_REFERENCES")
   },
   get OPENCODE_TUI_CONFIG() {
     return process.env["OPENCODE_TUI_CONFIG"]

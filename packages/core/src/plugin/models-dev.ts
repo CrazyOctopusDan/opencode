@@ -1,13 +1,13 @@
-import { DateTime, Effect } from "effect"
-import { Catalog } from "../catalog"
+import { define } from "@opencode-ai/plugin/v2/effect"
+import { Effect, Stream } from "effect"
 import { ModelV2 } from "../model"
+import { ModelRequest } from "../model-request"
 import { ModelsDev } from "../models-dev"
-import { PluginV2 } from "../plugin"
 import { ProviderV2 } from "../provider"
 
 function released(date: string) {
   const time = Date.parse(date)
-  return DateTime.makeUnsafe(Number.isFinite(time) ? time : 0)
+  return Number.isFinite(time) ? time : 0
 }
 
 function cost(input: ModelsDev.Model["cost"]) {
@@ -37,72 +37,100 @@ function cost(input: ModelsDev.Model["cost"]) {
   ]
 }
 
-function variants(model: ModelsDev.Model) {
-  return Object.entries(model.experimental?.modes ?? {}).map(([id, item]) => ({
-    id: ModelV2.VariantID.make(id),
-    headers: { ...(item.provider?.headers ?? {}) },
-    body: { ...(item.provider?.body ?? {}) },
-    aisdk: {
-      provider: {},
-      request: {},
-    },
-  }))
+function variants(model: ModelsDev.Model, packageName?: string) {
+  return Object.entries(model.experimental?.modes ?? {}).map(([id, item]) => {
+    const request = ModelRequest.normalizeAiSdkOptions(packageName, item.provider?.body ?? {})
+    return {
+      id: ModelV2.VariantID.make(id),
+      headers: { ...(item.provider?.headers ?? {}) },
+      ...request,
+    }
+  })
 }
 
-export const ModelsDevPlugin = PluginV2.define({
-  id: PluginV2.ID.make("models-dev"),
-  effect: Effect.gen(function* () {
-    const catalog = yield* Catalog.Service
+export const ModelsDevPlugin = define({
+  id: "models-dev",
+  effect: Effect.fn(function* (ctx) {
     const modelsDev = yield* ModelsDev.Service
-    for (const item of Object.values(yield* modelsDev.get())) {
-      const providerID = ProviderV2.ID.make(item.id)
-      yield* catalog.provider.update(providerID, (provider) => {
-        provider.name = item.name
-        provider.env = [...item.env]
-        provider.endpoint = item.npm
-          ? {
-              type: "aisdk",
-              package: item.npm,
-              url: item.api,
-            }
-          : {
-              type: "unknown",
-            }
-      })
-
-      for (const model of Object.values(item.models)) {
-        const modelID = ModelV2.ID.make(model.id)
-        yield* catalog.model
-          .update(providerID, modelID, (draft) => {
-            draft.name = model.name
-            draft.family = model.family ? ModelV2.Family.make(model.family) : undefined
-            draft.endpoint = model.provider?.npm
+    yield* ctx.integration.transform(
+      Effect.fn(function* (integrations) {
+        const data = yield* modelsDev.get()
+        for (const item of Object.values(data)) {
+          if (item.env.length === 0) continue
+          const integrationID = item.id
+          integrations.update(integrationID, (integration) => (integration.name = item.name))
+          integrations.method.update({
+            integrationID,
+            method: { type: "key" },
+          })
+          integrations.method.update({
+            integrationID,
+            method: { type: "env", names: [...item.env] },
+          })
+        }
+      }),
+    )
+    yield* ctx.catalog.transform(
+      Effect.fn(function* (catalog) {
+        const data = yield* modelsDev.get()
+        for (const item of Object.values(data)) {
+          const providerID = ProviderV2.ID.make(item.id)
+          catalog.provider.update(providerID, (provider) => {
+            provider.name = item.name
+            provider.api = item.npm
               ? {
                   type: "aisdk",
-                  package: model.provider?.npm,
-                  url: model.provider.api,
+                  package: item.npm,
+                  url: item.api,
                 }
               : {
-                  type: "unknown",
+                  type: "native",
+                  url: item.api,
+                  settings: {},
                 }
-            draft.capabilities = {
-              tools: model.tool_call,
-              input: [...(model.modalities?.input ?? [])],
-              output: [...(model.modalities?.output ?? [])],
-            }
-            draft.variants = variants(model)
-            draft.time.released = released(model.release_date)
-            draft.cost = cost(model.cost)
-            draft.status = model.status ?? "active"
-            draft.enabled = true
-            draft.limit = {
-              context: model.limit.context,
-              input: model.limit.input,
-              output: model.limit.output,
-            }
           })
-          .pipe(Effect.orDie)
-      }
-    }
-  }).pipe(Effect.provide(ModelsDev.defaultLayer)),
+
+          for (const model of Object.values(item.models)) {
+            const modelID = ModelV2.ID.make(model.id)
+            catalog.model.update(providerID, modelID, (draft) => {
+              draft.name = model.name
+              draft.family = model.family ? ModelV2.Family.make(model.family) : undefined
+              draft.api = model.provider?.npm
+                ? {
+                    id: draft.api.id,
+                    type: "aisdk",
+                    package: model.provider?.npm,
+                    url: model.provider.api,
+                  }
+                : {
+                    id: draft.api.id,
+                    type: "native",
+                    url: model.provider?.api,
+                    settings: {},
+                  }
+              draft.capabilities = {
+                tools: model.tool_call,
+                input: [...(model.modalities?.input ?? [])],
+                output: [...(model.modalities?.output ?? [])],
+              }
+              draft.variants = variants(model, model.provider?.npm ?? item.npm)
+              draft.time.released = released(model.release_date)
+              draft.cost = cost(model.cost)
+              draft.status = model.status ?? "active"
+              draft.enabled = true
+              draft.limit = {
+                context: model.limit.context,
+                input: model.limit.input,
+                output: model.limit.output,
+              }
+            })
+          }
+        }
+      }),
+    )
+    yield* ctx.event.subscribe("models-dev.refreshed").pipe(
+      Stream.runForEach(() => ctx.integration.rebuild().pipe(Effect.andThen(ctx.catalog.rebuild()))),
+      Effect.forkScoped({ startImmediately: true }),
+    )
+  }),
 })

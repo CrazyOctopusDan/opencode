@@ -2,13 +2,13 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { TogetherAIPlugin } from "@opencode-ai/core/plugin/provider/togetherai"
-import { fakeSelectorSdk, it, model } from "./provider-helper"
+import { addPlugin, fakeSelectorSdk, it, model } from "./provider-helper"
 
 describe("TogetherAIPlugin", () => {
   it.effect("creates a TogetherAI SDK for @ai-sdk/togetherai", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(TogetherAIPlugin)
+      yield* addPlugin(plugin, TogetherAIPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         { model: model("togetherai", "model"), package: "@ai-sdk/togetherai", options: { name: "togetherai" } },
@@ -21,7 +21,7 @@ describe("TogetherAIPlugin", () => {
   it.effect("matches the old bundled provider package exactly", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(TogetherAIPlugin)
+      yield* addPlugin(plugin, TogetherAIPlugin)
 
       const ignored = yield* plugin.trigger(
         "aisdk.sdk",
@@ -47,7 +47,7 @@ describe("TogetherAIPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const observed: string[] = []
-      yield* plugin.add(TogetherAIPlugin)
+      yield* addPlugin(plugin, TogetherAIPlugin)
       yield* plugin.add({
         id: PluginV2.ID.make("inspector"),
         effect: Effect.succeed({
@@ -76,7 +76,7 @@ describe("TogetherAIPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const calls: string[] = []
-      yield* plugin.add(TogetherAIPlugin)
+      yield* addPlugin(plugin, TogetherAIPlugin)
 
       const result = yield* plugin.trigger(
         "aisdk.language",
@@ -90,7 +90,7 @@ describe("TogetherAIPlugin", () => {
 
       expect(result.language).toBeUndefined()
       expect(calls).toEqual([])
-      expect(result.language ?? fakeSelectorSdk(calls).languageModel(result.model.apiID)).toBeDefined()
+      expect(result.language ?? fakeSelectorSdk(calls).languageModel(result.model.api.id)).toBeDefined()
       expect(calls).toEqual(["languageModel:meta-llama/Llama-3.3-70B-Instruct-Turbo"])
     }),
   )

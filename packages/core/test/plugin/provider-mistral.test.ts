@@ -3,13 +3,13 @@ import { Effect } from "effect"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { MistralPlugin } from "@opencode-ai/core/plugin/provider/mistral"
-import { fakeSelectorSdk, it, model } from "./provider-helper"
+import { addPlugin, fakeSelectorSdk, it, model } from "./provider-helper"
 
 describe("MistralPlugin", () => {
   it.effect("creates a Mistral SDK for @ai-sdk/mistral", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(MistralPlugin)
+      yield* addPlugin(plugin, MistralPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         { model: model("mistral", "mistral-large"), package: "@ai-sdk/mistral", options: { name: "mistral" } },
@@ -22,7 +22,7 @@ describe("MistralPlugin", () => {
   it.effect("ignores non-Mistral SDK packages", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(MistralPlugin)
+      yield* addPlugin(plugin, MistralPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         {
@@ -40,7 +40,7 @@ describe("MistralPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const providers: string[] = []
-      yield* plugin.add(MistralPlugin)
+      yield* addPlugin(plugin, MistralPlugin)
       yield* plugin.add({
         id: PluginV2.ID.make("mistral-sdk-inspector"),
         effect: Effect.succeed({
@@ -64,7 +64,7 @@ describe("MistralPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const providers: string[] = []
-      yield* plugin.add(MistralPlugin)
+      yield* addPlugin(plugin, MistralPlugin)
       yield* plugin.add({
         id: PluginV2.ID.make("mistral-sdk-inspector"),
         effect: Effect.succeed({
@@ -87,18 +87,18 @@ describe("MistralPlugin", () => {
     }),
   )
 
-  it.effect("leaves Mistral language selection on the default sdk.languageModel(apiID) path", () =>
+  it.effect("leaves Mistral language selection on the default sdk.languageModel(api.id) path", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const calls: string[] = []
       const sdk = fakeSelectorSdk(calls)
-      yield* plugin.add(MistralPlugin)
+      yield* addPlugin(plugin, MistralPlugin)
       const result = yield* plugin.trigger(
         "aisdk.language",
-        { model: model("mistral", "alias", { apiID: ModelV2.ID.make("mistral-large") }), sdk, options: {} },
+        { model: model("mistral", "alias", { api: { id: ModelV2.ID.make("mistral-large") } }), sdk, options: {} },
         {},
       )
-      const language = result.language ?? sdk.languageModel(result.model.apiID)
+      const language = result.language ?? sdk.languageModel(result.model.api.id)
       expect(calls).toEqual(["languageModel:mistral-large"])
       expect(language).toBeDefined()
     }),

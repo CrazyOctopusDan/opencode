@@ -17,7 +17,7 @@ import { useAuth } from "@/context/auth"
 import { useSDK } from "@/context/sdk"
 import { loadProvidersQuery } from "@/context/global-sync/bootstrap"
 import { useQueryClient } from "@tanstack/solid-query"
-import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client"
+import type { NormalizedProviderListResponse } from "@opencode-ai/ui/context"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -38,11 +38,10 @@ const ModelList: Component<{
   const auth = useAuth()
   const navigate = useNavigate()
   const [providerData] = createResource(async () => {
-    const buildModelResult = (input: ProviderListResponse) => {
-      const data = input ?? { all: [], connected: [], default: {} }
-      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+    const buildModelResult = (input: NormalizedProviderListResponse) => {
+      const enterprise = [...input.all.values()].filter((item) => item.id === "travelSky" || item.name === "travelSky")
       const allowed = new Set(enterprise.map((item) => item.id))
-      const connected = new Set(data.connected.filter((id) => allowed.has(id)))
+      const connected = new Set(input.connected.filter((id) => allowed.has(id)))
       return {
         ok: true as const,
         models: enterprise
@@ -68,7 +67,7 @@ const ModelList: Component<{
     })
     try {
       const data = await queryClient.fetchQuery(
-        loadProvidersQuery(sdk.directory, sdk.client, {
+        loadProvidersQuery(sdk.scope, sdk.directory, sdk.client, {
           recoverProviderAuth: async () => {
             if (await auth.recover()) {
               return sdk.createClient({ directory: sdk.directory, throwOnError: true })

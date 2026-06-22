@@ -1,12 +1,15 @@
 import { describe, expect, mock } from "bun:test"
 import { Effect, Layer } from "effect"
 import { AISDK } from "@opencode-ai/core/aisdk"
+import { EventV2 } from "@opencode-ai/core/event"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { DeepInfraPlugin } from "@opencode-ai/core/plugin/provider/deepinfra"
 import { testEffect } from "../lib/effect"
-import { it, model } from "./provider-helper"
+import { addPlugin, it, model } from "./provider-helper"
 
-const itAISDK = testEffect(Layer.provideMerge(AISDK.layer, PluginV2.defaultLayer))
+const itAISDK = testEffect(
+  Layer.provideMerge(AISDK.layer, PluginV2.locationLayer.pipe(Layer.provide(EventV2.defaultLayer))),
+)
 const deepinfraOptions: Record<string, any>[] = []
 const deepinfraLanguageModels: string[] = []
 
@@ -33,7 +36,7 @@ describe("DeepInfraPlugin", () => {
     Effect.gen(function* () {
       resetDeepInfraMock()
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(DeepInfraPlugin)
+      yield* addPlugin(plugin, DeepInfraPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         { model: model("deepinfra", "model"), package: "@ai-sdk/deepinfra", options: { name: "deepinfra" } },
@@ -47,7 +50,7 @@ describe("DeepInfraPlugin", () => {
     Effect.gen(function* () {
       resetDeepInfraMock()
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(DeepInfraPlugin)
+      yield* addPlugin(plugin, DeepInfraPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         {
@@ -66,7 +69,7 @@ describe("DeepInfraPlugin", () => {
     Effect.gen(function* () {
       resetDeepInfraMock()
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(DeepInfraPlugin)
+      yield* addPlugin(plugin, DeepInfraPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
         {
@@ -85,7 +88,7 @@ describe("DeepInfraPlugin", () => {
     Effect.gen(function* () {
       resetDeepInfraMock()
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(DeepInfraPlugin)
+      yield* addPlugin(plugin, DeepInfraPlugin)
       const packages = [
         "unmatched-package",
         "@ai-sdk/deepinfra-compatible",
@@ -116,10 +119,10 @@ describe("DeepInfraPlugin", () => {
       resetDeepInfraMock()
       const plugin = yield* PluginV2.Service
       const aisdk = yield* AISDK.Service
-      yield* plugin.add(DeepInfraPlugin)
+      yield* addPlugin(plugin, DeepInfraPlugin)
       const language = yield* aisdk.language(
         model("deepinfra", "meta-llama/Llama-3.3-70B-Instruct", {
-          endpoint: { type: "aisdk", package: "@ai-sdk/deepinfra" },
+          api: { type: "aisdk", package: "@ai-sdk/deepinfra" },
         }),
       )
       expect(language.provider).toBe("deepinfra.chat")

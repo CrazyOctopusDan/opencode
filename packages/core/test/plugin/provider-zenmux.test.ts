@@ -1,9 +1,11 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
+import { Catalog } from "@opencode-ai/core/catalog"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { ProviderPlugins } from "@opencode-ai/core/plugin/provider"
 import { ZenmuxPlugin } from "@opencode-ai/core/plugin/provider/zenmux"
-import { expectPluginRegistered, it, provider } from "./provider-helper"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { addPlugin, expectPluginRegistered, it, provider, required } from "./provider-helper"
 
 describe("ZenmuxPlugin", () => {
   it.effect("is registered so legacy referer headers can be applied", () =>
@@ -18,30 +20,39 @@ describe("ZenmuxPlugin", () => {
   it.effect("applies the exact legacy Zenmux headers", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(ZenmuxPlugin)
-      const result = yield* plugin.trigger("provider.update", {}, { provider: provider("zenmux"), cancel: false })
-      expect(result.provider.options.headers).toEqual({ "HTTP-Referer": "https://opencode.ai/", "X-Title": "opencode" })
-      expect(Object.keys(result.provider.options.headers).sort()).toEqual(["HTTP-Referer", "X-Title"])
-      expect(result.cancel).toBe(false)
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, ZenmuxPlugin)
+      yield* catalog.transform((catalog) => {
+        const item = provider("zenmux", {
+          api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://zenmux.ai/api/v1" },
+        })
+        catalog.provider.update(item.id, (draft) => {
+          draft.api = item.api
+        })
+      })
+      const result = required(yield* catalog.provider.get(ProviderV2.ID.make("zenmux")))
+      expect(result.request.headers).toEqual({ "HTTP-Referer": "https://opencode.ai/", "X-Title": "opencode" })
+      expect(Object.keys(result.request.headers).sort()).toEqual(["HTTP-Referer", "X-Title"])
     }),
   )
 
   it.effect("merges legacy Zenmux headers with existing headers", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(ZenmuxPlugin)
-      const result = yield* plugin.trigger(
-        "provider.update",
-        {},
-        {
-          provider: provider("zenmux", {
-            options: { headers: { Existing: "value" }, body: {}, aisdk: { provider: {}, request: {} } },
-          }),
-          cancel: false,
-        },
-      )
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, ZenmuxPlugin)
+      yield* catalog.transform((catalog) => {
+        const item = provider("zenmux", {
+          api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://zenmux.ai/api/v1" },
+          request: { headers: { Existing: "value" }, body: {} },
+        })
+        catalog.provider.update(item.id, (draft) => {
+          draft.api = item.api
+          draft.request = item.request
+        })
+      })
 
-      expect(result.provider.options.headers).toEqual({
+      expect(required(yield* catalog.provider.get(ProviderV2.ID.make("zenmux"))).request.headers).toEqual({
         Existing: "value",
         "HTTP-Referer": "https://opencode.ai/",
         "X-Title": "opencode",
@@ -52,23 +63,23 @@ describe("ZenmuxPlugin", () => {
   it.effect("lets configured Zenmux legacy headers override defaults", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(ZenmuxPlugin)
-      const result = yield* plugin.trigger(
-        "provider.update",
-        {},
-        {
-          provider: provider("zenmux", {
-            options: {
-              headers: { "HTTP-Referer": "https://example.com/", "X-Title": "custom-title" },
-              body: {},
-              aisdk: { provider: {}, request: {} },
-            },
-          }),
-          cancel: false,
-        },
-      )
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, ZenmuxPlugin)
+      yield* catalog.transform((catalog) => {
+        const item = provider("zenmux", {
+          api: { type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://zenmux.ai/api/v1" },
+          request: {
+            headers: { "HTTP-Referer": "https://example.com/", "X-Title": "custom-title" },
+            body: {},
+          },
+        })
+        catalog.provider.update(item.id, (draft) => {
+          draft.api = item.api
+          draft.request = item.request
+        })
+      })
 
-      expect(result.provider.options.headers).toEqual({
+      expect(required(yield* catalog.provider.get(ProviderV2.ID.make("zenmux"))).request.headers).toEqual({
         "HTTP-Referer": "https://example.com/",
         "X-Title": "custom-title",
       })
@@ -78,23 +89,21 @@ describe("ZenmuxPlugin", () => {
   it.effect("guards legacy Zenmux headers to the exact zenmux provider id", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(ZenmuxPlugin)
-      const ignored = yield* plugin.trigger(
-        "provider.update",
-        {},
-        {
-          provider: provider("openrouter", {
-            options: {
-              headers: { "HTTP-Referer": "https://example.com/", "X-Title": "custom-title" },
-              body: {},
-              aisdk: { provider: {}, request: {} },
-            },
-          }),
-          cancel: false,
-        },
-      )
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, ZenmuxPlugin)
+      yield* catalog.transform((catalog) => {
+        const item = provider("openrouter", {
+          request: {
+            headers: { "HTTP-Referer": "https://example.com/", "X-Title": "custom-title" },
+            body: {},
+          },
+        })
+        catalog.provider.update(item.id, (draft) => {
+          draft.request = item.request
+        })
+      })
 
-      expect(ignored.provider.options.headers).toEqual({
+      expect(required(yield* catalog.provider.get(ProviderV2.ID.openrouter)).request.headers).toEqual({
         "HTTP-Referer": "https://example.com/",
         "X-Title": "custom-title",
       })

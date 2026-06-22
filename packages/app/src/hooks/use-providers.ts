@@ -1,4 +1,4 @@
-import { useGlobalSync } from "@/context/global-sync"
+import { useServerSync } from "@/context/server-sync"
 import { decode64 } from "@/utils/base64"
 import { useParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
@@ -16,22 +16,22 @@ export const popularProviders = [
 const popularProviderSet = new Set(popularProviders)
 
 export function useProviders() {
-  const globalSync = useGlobalSync()
+  const serverSync = useServerSync()
   const params = useParams()
   const connectEnabled = import.meta.env.VITE_ALLOW_PROVIDER_CONNECT !== "false"
-  const currentDirectory = createMemo(() => decode64(params.dir) ?? "")
-  const providers = createMemo(() => {
-    if (currentDirectory()) {
-      const [projectStore] = globalSync.child(currentDirectory())
-      return projectStore.provider
+  const dir = createMemo(() => decode64(params.dir) ?? "")
+  const providers = () => {
+    if (dir()) {
+      const [projectStore] = serverSync().child(dir())
+      if (projectStore.provider_ready) return projectStore.provider
     }
-    return globalSync.data.provider
-  })
+    return serverSync().data.provider
+  }
   const enterprise = createMemo(() => {
-    const all = providers().all
+    const all = [...providers().all.values()]
     const picked = all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
     if (picked.length > 0) return picked
-    return [] as typeof all
+    return []
   })
   const connectedIDs = createMemo(() => {
     const allowed = new Set(enterprise().map((item) => item.id))

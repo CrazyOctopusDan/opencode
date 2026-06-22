@@ -4,12 +4,13 @@ import { Dialog } from "@opencode-ai/ui/dialog"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { showToast } from "@opencode-ai/ui/toast"
+import { showToast } from "@/utils/toast"
 import { For } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useMutation } from "@tanstack/solid-query"
 import { Link } from "@/components/link"
-import { useGlobalSDK } from "@/context/global-sdk"
-import { useGlobalSync } from "@/context/global-sync"
+import { useServerSDK } from "@/context/server-sdk"
+import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
@@ -164,8 +165,8 @@ type Props = {
 
 export function DialogCustomProvider(props: Props) {
   const dialog = useDialog()
-  const globalSync = useGlobalSync()
-  const globalSDK = useGlobalSDK()
+  const serverSync = useServerSync()
+  const serverSDK = useServerSDK()
   const language = useLanguage()
 
   const [form, setForm] = createStore<FormState>({
@@ -220,12 +221,47 @@ export function DialogCustomProvider(props: Props) {
     const output = validateCustomProvider({
       form,
       t: language.t,
-      disabledProviders: globalSync.data.config.disabled_providers ?? [],
-      existingProviderIDs: new Set(globalSync.data.provider.all.map((p) => p.id)),
+      disabledProviders: serverSync().data.config.disabled_providers ?? [],
+      existingProviderIDs: new Set(serverSync().data.provider.all.keys()),
     })
     setErrors(output.errors)
     return output.result
   }
+
+  const saveMutation = useMutation(() => ({
+    mutationFn: async (result: NonNullable<ReturnType<typeof validate>>) => {
+      const disabledProviders = serverSync().data.config.disabled_providers ?? []
+      const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
+
+      if (result.key) {
+        await serverSDK().client.auth.set({
+          providerID: result.providerID,
+          auth: {
+            type: "api",
+            key: result.key,
+          },
+        })
+      }
+
+      await serverSync().updateConfig({
+        provider: { [result.providerID]: result.config },
+        disabled_providers: nextDisabled,
+      })
+    },
+    onSuccess: (_, result) => {
+      dialog.close()
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("provider.connect.toast.connected.title", { provider: result.name }),
+        description: language.t("provider.connect.toast.connected.description", { provider: result.name }),
+      })
+    },
+    onError: (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        showToast({ title: language.t("common.requestFailed"), description: message })
+    },
+  }))
 
   const save = async (e: SubmitEvent) => {
     e.preventDefault()
@@ -242,40 +278,9 @@ export function DialogCustomProvider(props: Props) {
     if (!result) return
 
     setForm("saving", true)
-
-    const disabledProviders = globalSync.data.config.disabled_providers ?? []
-    const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
-
-    const auth = result.key
-      ? globalSDK.client.auth.set({
-          providerID: result.providerID,
-          auth: {
-            type: "api",
-            key: result.key,
-          },
-        })
-      : Promise.resolve()
-
-    auth
-      .then(() =>
-        globalSync.updateConfig({ provider: { [result.providerID]: result.config }, disabled_providers: nextDisabled }),
-      )
-      .then(() => {
-        dialog.close()
-        showToast({
-          variant: "success",
-          icon: "circle-check",
-          title: language.t("provider.connect.toast.connected.title", { provider: result.name }),
-          description: language.t("provider.connect.toast.connected.description", { provider: result.name }),
-        })
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err)
-        showToast({ title: language.t("common.requestFailed"), description: message })
-      })
-      .finally(() => {
-        setForm("saving", false)
-      })
+    await saveMutation.mutateAsync(result).finally(() => {
+      setForm("saving", false)
+    })
   }
 
   return (

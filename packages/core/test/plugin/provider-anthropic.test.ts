@@ -1,37 +1,43 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
+import { Catalog } from "@opencode-ai/core/catalog"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { AnthropicPlugin } from "@opencode-ai/core/plugin/provider/anthropic"
-import { it, model, provider } from "./provider-helper"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { addPlugin, it, model, provider, required } from "./provider-helper"
 
 describe("AnthropicPlugin", () => {
   it.effect("applies legacy beta headers", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(AnthropicPlugin)
-      const result = yield* plugin.trigger(
-        "provider.update",
-        {},
-        {
-          provider: provider("anthropic", {
-            options: { headers: { Existing: "1" }, body: {}, aisdk: { provider: {}, request: {} } },
-          }),
-          cancel: false,
-        },
-      )
-      expect(result.provider.options.headers["anthropic-beta"]).toBe(
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, AnthropicPlugin)
+      yield* catalog.transform((catalog) => {
+        const item = provider("anthropic", {
+          api: { type: "aisdk", package: "@ai-sdk/anthropic" },
+          request: { headers: { Existing: "1" }, body: {} },
+        })
+        catalog.provider.update(item.id, (draft) => {
+          draft.api = item.api
+          draft.request = item.request
+        })
+      })
+      expect(required(yield* catalog.provider.get(ProviderV2.ID.anthropic)).request.headers["anthropic-beta"]).toBe(
         "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
       )
-      expect(result.provider.options.headers.Existing).toBe("1")
+      expect(required(yield* catalog.provider.get(ProviderV2.ID.anthropic)).request.headers.Existing).toBe("1")
     }),
   )
 
   it.effect("ignores non-Anthropic providers", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
-      yield* plugin.add(AnthropicPlugin)
-      const result = yield* plugin.trigger("provider.update", {}, { provider: provider("openai"), cancel: false })
-      expect(result.provider.options.headers["anthropic-beta"]).toBeUndefined()
+      const catalog = yield* Catalog.Service
+      yield* addPlugin(plugin, AnthropicPlugin)
+      yield* catalog.transform((catalog) => catalog.provider.update(provider("openai").id, () => {}))
+      expect(
+        required(yield* catalog.provider.get(ProviderV2.ID.openai)).request.headers["anthropic-beta"],
+      ).toBeUndefined()
     }),
   )
 
@@ -39,7 +45,7 @@ describe("AnthropicPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const providers: string[] = []
-      yield* plugin.add(AnthropicPlugin)
+      yield* addPlugin(plugin, AnthropicPlugin)
       yield* plugin.add({
         id: PluginV2.ID.make("anthropic-sdk-inspector"),
         effect: Effect.succeed({
@@ -66,7 +72,7 @@ describe("AnthropicPlugin", () => {
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       const providers: string[] = []
-      yield* plugin.add(AnthropicPlugin)
+      yield* addPlugin(plugin, AnthropicPlugin)
       yield* plugin.add({
         id: PluginV2.ID.make("anthropic-sdk-inspector"),
         effect: Effect.succeed({

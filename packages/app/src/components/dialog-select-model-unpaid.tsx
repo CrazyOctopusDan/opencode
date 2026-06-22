@@ -17,7 +17,7 @@ import { useAuth } from "@/context/auth"
 import { useSDK } from "@/context/sdk"
 import { loadProvidersQuery } from "@/context/global-sync/bootstrap"
 import { useQueryClient } from "@tanstack/solid-query"
-import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client"
+import type { NormalizedProviderListResponse } from "@opencode-ai/ui/context"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
@@ -32,11 +32,11 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
   const auth = useAuth()
   const [providerData] = createResource(async () => {
     const started = Date.now()
-    const buildModelResult = (input: ProviderListResponse) => {
-      const data = (input ?? { all: [], connected: [], default: {} }) as ProviderListResponse & {
+    const buildModelResult = (input: NormalizedProviderListResponse) => {
+      const data = input as NormalizedProviderListResponse & {
         debug_tempo?: unknown
       }
-      const enterprise = data.all.filter((item) => item.id === "travelSky" || item.name === "travelSky")
+      const enterprise = [...data.all.values()].filter((item) => item.id === "travelSky" || item.name === "travelSky")
       const allowed = new Set(enterprise.map((item) => item.id))
       const connected = new Set(data.connected.filter((id) => allowed.has(id)))
       return {
@@ -74,7 +74,7 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
     })
     try {
       const data = await queryClient.fetchQuery(
-        loadProvidersQuery(sdk.directory, sdk.client, {
+        loadProvidersQuery(sdk.scope, sdk.directory, sdk.client, {
           recoverProviderAuth: async () => {
             if (await auth.recover()) {
               return sdk.createClient({ directory: sdk.directory, throwOnError: true })
@@ -112,7 +112,7 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
           <div class="px-2 py-1 text-12-regular text-text-weak">Loading company model API...</div>
         </Show>
         <List
-          class="[&_[data-slot=list-scroll]]:overflow-visible"
+          class="px-3 [&_[data-slot=list-scroll]]:overflow-visible"
           ref={(ref) => (listRef = ref)}
           items={models}
           emptyMessage={providerData.loading ? "Loading company models..." : language.t("dialog.model.empty")}
