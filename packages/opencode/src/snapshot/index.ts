@@ -167,7 +167,7 @@ export const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Serv
         const locked = <A, E, R>(fx: Effect.Effect<A, E, R>) => lock(state.gitdir).withPermits(1)(fx)
 
         const enabled = Effect.fnUntraced(function* () {
-          if (state.vcs !== "git") return false
+          if (state.vcs !== "git") return true
           return (yield* config.get()).snapshot !== false
         })
 

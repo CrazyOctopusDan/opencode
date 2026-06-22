@@ -1401,7 +1401,9 @@ export const layer = Layer.effect(
 
         const out = yield* lastAssistant(sessionID)
         if (out.info.role === "assistant") {
-          const rows = yield* MessageV2.filterCompactedEffect(sessionID)
+          const rows = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
           const parent = out.info.parentID
           const mark = marks(
             rows.filter((row) => row.info.id === parent || (row.info.role === "assistant" && row.info.parentID === parent)),
@@ -1572,8 +1574,8 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
+export const defaultLayer = Layer.suspend(() => {
+  const base = layer.pipe(
     Layer.provide(SessionRunState.defaultLayer),
     Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(SessionCompaction.defaultLayer),
@@ -1591,6 +1593,9 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(FSUtil.defaultLayer),
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Session.defaultLayer),
+  )
+
+  return base.pipe(
     Layer.provide(SessionRevert.defaultLayer),
     Layer.provide(SessionSummary.defaultLayer),
     Layer.provide(Image.defaultLayer),
@@ -1605,8 +1610,8 @@ export const defaultLayer = Layer.suspend(() =>
         EventV2Bridge.defaultLayer,
       ),
     ),
-  ),
-)
+  )
+})
 const ModelRef = Schema.Struct({
   providerID: ProviderV2.ID,
   modelID: ModelV2.ID,
@@ -1733,6 +1738,7 @@ export const node = LayerNode.make(layer, [
   SessionRunState.node,
   SessionRevert.node,
   SessionSummary.node,
+  Snapshot.node,
   SystemPrompt.node,
   LLM.node,
   EventV2Bridge.node,

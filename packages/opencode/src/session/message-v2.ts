@@ -39,6 +39,16 @@ import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
 
+export type {
+  Assistant,
+  StepFinishPart,
+  StepStartPart,
+  TextPart,
+  TextPartInput,
+  ToolPart,
+  WithParts,
+} from "@opencode-ai/core/v1/session"
+
 export const node = LayerNode.group([Database.node])
 
 /** Error shape thrown by Bun's fetch() when gzip/br decompression fails mid-stream */

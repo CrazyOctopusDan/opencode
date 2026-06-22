@@ -102,7 +102,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
             username: payload.value.username,
             password: payload.value.password,
           }).catch((err) => {
-            log.error("tempo login failed", { error: err })
+            console.error("[httpapi.global] tempo login failed", err)
             return
           }),
         )

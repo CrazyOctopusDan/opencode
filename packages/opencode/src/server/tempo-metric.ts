@@ -1,9 +1,7 @@
-import * as Log from "@opencode-ai/core/util/log"
 import { TempoApi } from "./tempo-api"
 import { TempoSession } from "./tempo-session"
 
 const path = "/ai/data/api/open/code/metric/add"
-const log = Log.create({ service: "server.tempo-metric" })
 
 type Body = {
   text: string
@@ -59,7 +57,7 @@ export namespace TempoMetric {
         return true
       })
       .catch((err) => {
-        log.warn("metric send failed", {
+        console.warn("[server.tempo-metric] metric send failed", {
           error: error(err),
         })
         return false

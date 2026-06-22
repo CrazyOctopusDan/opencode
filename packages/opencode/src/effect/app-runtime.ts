@@ -52,7 +52,7 @@ import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 
-export const AppLayer = Layer.mergeAll(
+const CoreLayer = Layer.mergeAll(
   Npm.defaultLayer,
   FSUtil.defaultLayer,
   Database.defaultLayer,
@@ -72,6 +72,9 @@ export const AppLayer = Layer.mergeAll(
   Question.defaultLayer,
   Permission.defaultLayer,
   Todo.defaultLayer,
+)
+
+const SessionLayer = Layer.mergeAll(
   Session.defaultLayer,
   SessionStatus.defaultLayer,
   BackgroundJob.defaultLayer,
@@ -89,6 +92,9 @@ export const AppLayer = Layer.mergeAll(
   MCP.defaultLayer,
   McpAuth.defaultLayer,
   Command.defaultLayer,
+)
+
+const ProjectLayer = Layer.mergeAll(
   Truncate.defaultLayer,
   ToolRegistry.defaultLayer,
   Format.defaultLayer,
@@ -99,6 +105,12 @@ export const AppLayer = Layer.mergeAll(
   Installation.defaultLayer,
   ShareNext.defaultLayer,
   SessionShare.defaultLayer,
+)
+
+export const AppLayer = Layer.mergeAll(
+  CoreLayer,
+  SessionLayer,
+  ProjectLayer,
 ).pipe(
   Layer.provideMerge(Ripgrep.defaultLayer),
   Layer.provideMerge(InstanceLayer.layer),
