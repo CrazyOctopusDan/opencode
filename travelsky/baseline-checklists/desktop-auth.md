@@ -54,7 +54,7 @@
 - `TempoApi.listModels()` 不能把 token 失效吞成普通空模型或网络不可用；必须返回可区分的 `expired` 状态。
 - provider list 必须在 expired 时输出 `debug_tempo.auth_expired === true`，并保留可选 `message`。
 - expired provider snapshot 是瞬时锁定状态，不能覆盖已有全局 `ModelPolicy` 缓存，也不能放开普通 provider。
-- `TempoMetric.send()` 遇到 expired、非 2xx、`success=false` 或无登录态时返回 `false`，不能向 UI 抛出错误或触发弹窗。
+- `TempoMetric.sendGeneration()`/`sendAdoption()` 遇到 expired、非 2xx、`success=false` 或无登录态时静默失败，不能向 UI 抛出错误或触发弹窗。
 - Desktop 记住我只在 `platform.platform === "desktop"` 且 preload IPC 可用时工作；Web 或缺 IPC 时必须表现为无已记住凭据。
 - 密码只能用 Electron `safeStorage` 加密后保存为密文；`safeStorage` 不可用、加密失败或解密失败时，只能保存或返回用户名，`passwordAvailable` 必须为 `false`。
 - 登录成功且勾选“记住我”时保存已记住凭据；未勾选时必须清理已保存凭据。

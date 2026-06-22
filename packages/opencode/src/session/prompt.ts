@@ -105,8 +105,7 @@ function marks(input: MessageV2.WithParts[]) {
       (part): part is MessageV2.StepStartPart & { snapshot: string } => part.type === "step-start" && !!part.snapshot,
     )?.snapshot,
     to: parts.findLast(
-      (part): part is MessageV2.StepFinishPart & { snapshot: string } =>
-        part.type === "step-finish" && !!part.snapshot,
+      (part): part is MessageV2.StepFinishPart & { snapshot: string } => part.type === "step-finish" && !!part.snapshot,
     )?.snapshot,
   }
 }
@@ -1401,22 +1400,36 @@ export const layer = Layer.effect(
 
         const out = yield* lastAssistant(sessionID)
         if (out.info.role === "assistant") {
+          const provider = out.info.providerID
           const rows = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
           )
           const parent = out.info.parentID
           const mark = marks(
-            rows.filter((row) => row.info.id === parent || (row.info.role === "assistant" && row.info.parentID === parent)),
+            rows.filter(
+              (row) => row.info.id === parent || (row.info.role === "assistant" && row.info.parentID === parent),
+            ),
           )
           const diffs = mark.from && mark.to ? yield* snapshot.diffFull(mark.from, mark.to) : []
           const body = SessionMetric.build({
             rows,
             parent,
             model: out.info.modelID,
-            provider: out.info.providerID,
+            provider,
             diffs,
           })
-          if (body) yield* Effect.promise(() => TempoMetric.send(body))
+          if (body) {
+            yield* Effect.promise(async () => {
+              const qaid = await TempoMetric.sendGeneration(body)
+              const adoption = SessionMetric.adoption({
+                rows,
+                parent,
+                provider,
+                diffs,
+              })
+              if (qaid && adoption) await TempoMetric.sendAdoption({ qaid, ...adoption })
+            })
+          }
         }
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return out

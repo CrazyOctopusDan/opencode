@@ -52,6 +52,7 @@
 ### Task 1: Tempo Expired Detection
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/tempo-api.ts`
 - Modify: `packages/opencode/test/server/tempo-api.test.ts`
 
@@ -132,46 +133,46 @@ export type TempoModelListResult =
 Inside `export namespace TempoApi`, add:
 
 ```ts
-  export function expired(payload: unknown) {
-    if (!payload || typeof payload !== "object") return false
-    const item = payload as Record<string, unknown>
-    return (
-      item.success === false &&
-      item.code === 401 &&
-      typeof item.message === "string" &&
-      item.message.startsWith("token校验失败，失败原因")
-    )
-  }
+export function expired(payload: unknown) {
+  if (!payload || typeof payload !== "object") return false
+  const item = payload as Record<string, unknown>
+  return (
+    item.success === false &&
+    item.code === 401 &&
+    typeof item.message === "string" &&
+    item.message.startsWith("token校验失败，失败原因")
+  )
+}
 ```
 
 Change `listModels()` return behavior:
 
 ```ts
-      if (expired(payload)) {
-        return {
-          status: "expired" as const,
-          message: extractMessage(payload) ?? "token校验失败，失败原因未知",
-        }
-      }
-      if (!res.ok || success === false) {
-        return {
-          status: "unavailable" as const,
-          message: extractMessage(payload),
-        }
-      }
-      return {
-        status: "ok" as const,
-        providers: normalized,
-      }
+if (expired(payload)) {
+  return {
+    status: "expired" as const,
+    message: extractMessage(payload) ?? "token校验失败，失败原因未知",
+  }
+}
+if (!res.ok || success === false) {
+  return {
+    status: "unavailable" as const,
+    message: extractMessage(payload),
+  }
+}
+return {
+  status: "ok" as const,
+  providers: normalized,
+}
 ```
 
 Change the `catch` block return to:
 
 ```ts
-      return {
-        status: "unavailable" as const,
-        message: error instanceof Error ? error.message : String(error),
-      }
+return {
+  status: "unavailable" as const,
+  message: error instanceof Error ? error.message : String(error),
+}
 ```
 
 - [ ] **Step 4: Update existing tempo-api test expectations**
@@ -179,38 +180,38 @@ Change the `catch` block return to:
 In the existing model normalization test, replace:
 
 ```ts
-      expect(result).toBeDefined()
-      expect(result?.length).toBe(1)
-      expect(result?.[0]?.id).toBe("travelSky")
-      expect(result?.[0]?.name).toBe("travelSky")
-      expect(result?.[0]?.models.length).toBe(2)
+expect(result).toBeDefined()
+expect(result?.length).toBe(1)
+expect(result?.[0]?.id).toBe("travelSky")
+expect(result?.[0]?.name).toBe("travelSky")
+expect(result?.[0]?.models.length).toBe(2)
 
-      const ids = new Set(result?.[0]?.models.map((item) => item.id))
+const ids = new Set(result?.[0]?.models.map((item) => item.id))
 ```
 
 with:
 
 ```ts
-      expect(result.status).toBe("ok")
-      if (result.status !== "ok") throw new Error("expected ok model list")
-      expect(result.providers.length).toBe(1)
-      expect(result.providers[0]?.id).toBe("travelSky")
-      expect(result.providers[0]?.name).toBe("travelSky")
-      expect(result.providers[0]?.models.length).toBe(2)
+expect(result.status).toBe("ok")
+if (result.status !== "ok") throw new Error("expected ok model list")
+expect(result.providers.length).toBe(1)
+expect(result.providers[0]?.id).toBe("travelSky")
+expect(result.providers[0]?.name).toBe("travelSky")
+expect(result.providers[0]?.models.length).toBe(2)
 
-      const ids = new Set(result.providers[0]?.models.map((item) => item.id))
+const ids = new Set(result.providers[0]?.models.map((item) => item.id))
 ```
 
 Replace:
 
 ```ts
-      const byId = Object.fromEntries(result?.[0]?.models.map((item) => [item.id, item]) ?? [])
+const byId = Object.fromEntries(result?.[0]?.models.map((item) => [item.id, item]) ?? [])
 ```
 
 with:
 
 ```ts
-      const byId = Object.fromEntries(result.providers[0]?.models.map((item) => [item.id, item]) ?? [])
+const byId = Object.fromEntries(result.providers[0]?.models.map((item) => [item.id, item]) ?? [])
 ```
 
 - [ ] **Step 5: Run the focused test and verify it passes**
@@ -234,6 +235,7 @@ git commit -m "feat: detect Tempo token expiration"
 ### Task 2: Preserve Expired Status Through Model Policy
 
 **Files:**
+
 - Modify: `packages/opencode/src/provider/model-policy.ts`
 - Modify: `packages/opencode/src/server/routes/instance/provider.ts`
 - Modify: `packages/opencode/test/server/tempo-api.test.ts`
@@ -304,21 +306,21 @@ async function fromTempo(localToken?: string) {
 Then update `ModelPolicy.snapshot()`:
 
 ```ts
-  export async function snapshot(force = false, localToken?: string) {
-    if (!force && Date.now() < expiresAt) return cache
-    const auth = TempoSession.get(localToken)
-    const locked = TempoApi.enabled() && !!auth?.token
-    const tempo = await fromTempo(localToken)
-    if (tempo?.status === "expired") {
-      cache = makeExpiredSnapshot(tempo.message)
-      expiresAt = Date.now() + refreshMs()
-      return cache
-    }
-    const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
-    cache = makeSnapshot(list, locked)
+export async function snapshot(force = false, localToken?: string) {
+  if (!force && Date.now() < expiresAt) return cache
+  const auth = TempoSession.get(localToken)
+  const locked = TempoApi.enabled() && !!auth?.token
+  const tempo = await fromTempo(localToken)
+  if (tempo?.status === "expired") {
+    cache = makeExpiredSnapshot(tempo.message)
     expiresAt = Date.now() + refreshMs()
     return cache
   }
+  const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
+  cache = makeSnapshot(list, locked)
+  expiresAt = Date.now() + refreshMs()
+  return cache
+}
 ```
 
 - [ ] **Step 4: Surface debug status in provider route**
@@ -326,19 +328,19 @@ Then update `ModelPolicy.snapshot()`:
 In `packages/opencode/src/server/routes/instance/provider.ts`, extend the returned object:
 
 ```ts
-          return {
-            all: Object.values(providers),
-            default: Provider.defaultModelIDs(providers),
-            connected: Object.keys(connected),
-            ...(policy.expired
-              ? {
-                  debug_tempo: {
-                    auth_expired: true,
-                    message: policy.expiredMessage,
-                  },
-                }
-              : {}),
-          }
+return {
+  all: Object.values(providers),
+  default: Provider.defaultModelIDs(providers),
+  connected: Object.keys(connected),
+  ...(policy.expired
+    ? {
+        debug_tempo: {
+          auth_expired: true,
+          message: policy.expiredMessage,
+        },
+      }
+    : {}),
+}
 ```
 
 - [ ] **Step 5: Run typecheck for opencode**
@@ -371,6 +373,7 @@ git commit -m "feat: surface Tempo auth expiration"
 ### Task 3: Metric Expired Handling
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/tempo-metric.ts`
 - Modify: `packages/opencode/test/server/tempo-metric.test.ts`
 
@@ -379,7 +382,7 @@ git commit -m "feat: surface Tempo auth expiration"
 Append to `packages/opencode/test/server/tempo-metric.test.ts`:
 
 ```ts
-test("skips metric send when Tempo reports token expiration", async () => {
+test("skips generation metric send when Tempo reports token expiration", async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async () =>
     new Response(
@@ -392,12 +395,21 @@ test("skips metric send when Tempo reports token expiration", async () => {
     )) as typeof fetch
 
   try {
-    const sent = await TempoMetric.send({
-      text: "hello",
-      other: "{}",
-      modelName: "qwen",
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen",
+      promptName: "build",
+      generatedLines: "0",
+      sessionId: "ses_1",
+      codeLanguage: "Other",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "demo",
+      requestContent: "hello",
+      responseContent: "hello",
     })
-    expect(sent).toBeFalse()
+    expect(qaid).toBeUndefined()
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -411,55 +423,55 @@ cd packages/opencode
 bun test test/server/tempo-metric.test.ts
 ```
 
-Expected before implementation: the new test may fail because `TempoMetric.send()` treats any `res.ok` response as success.
+Expected before implementation: the new test may fail because metric send treats any `res.ok` response as success.
 
 - [ ] **Step 3: Parse metric response payload**
 
 In `packages/opencode/src/server/tempo-metric.ts`, replace:
 
 ```ts
-    return fetch(url(), {
-      method: "POST",
-      headers: head,
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(1_500),
+return fetch(url(), {
+  method: "POST",
+  headers: head,
+  body: JSON.stringify(input),
+  signal: AbortSignal.timeout(1_500),
+})
+  .then((res) => res.ok)
+  .catch((err) => {
+    log.warn("metric send failed", {
+      error: error(err),
     })
-      .then((res) => res.ok)
-      .catch((err) => {
-        log.warn("metric send failed", {
-          error: error(err),
-        })
-        return false
-      })
+    return false
+  })
 ```
 
 with:
 
 ```ts
-    return fetch(url(), {
-      method: "POST",
-      headers: head,
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(1_500),
+return fetch(url(), {
+  method: "POST",
+  headers: head,
+  body: JSON.stringify(input),
+  signal: AbortSignal.timeout(1_500),
+})
+  .then(async (res) => {
+    const payload = await res.json().catch(() => undefined)
+    if (TempoApi.expired(payload)) {
+      log.warn("metric send skipped because Tempo token expired", {
+        status: res.status,
+      })
+      return false
+    }
+    if (!res.ok) return false
+    if (payload && typeof payload === "object" && (payload as Record<string, unknown>).success === false) return false
+    return true
+  })
+  .catch((err) => {
+    log.warn("metric send failed", {
+      error: error(err),
     })
-      .then(async (res) => {
-        const payload = await res.json().catch(() => undefined)
-        if (TempoApi.expired(payload)) {
-          log.warn("metric send skipped because Tempo token expired", {
-            status: res.status,
-          })
-          return false
-        }
-        if (!res.ok) return false
-        if (payload && typeof payload === "object" && (payload as Record<string, unknown>).success === false) return false
-        return true
-      })
-      .catch((err) => {
-        log.warn("metric send failed", {
-          error: error(err),
-        })
-        return false
-      })
+    return false
+  })
 ```
 
 - [ ] **Step 4: Run metric test**
@@ -483,6 +495,7 @@ git commit -m "fix: skip expired Tempo metrics"
 ### Task 4: Desktop Secure Credential IPC
 
 **Files:**
+
 - Modify: `packages/desktop/src/preload/types.ts`
 - Modify: `packages/desktop/src/preload/index.ts`
 - Modify: `packages/desktop/src/main/ipc.ts`
@@ -502,9 +515,9 @@ export type SecureCredential = {
 Add these methods to `ElectronAPI`:
 
 ```ts
-  secureCredentialGet: (key: string) => Promise<SecureCredential | null>
-  secureCredentialSet: (key: string, value: { username: string; password: string }) => Promise<{ passwordSaved: boolean }>
-  secureCredentialDelete: (key: string) => Promise<void>
+secureCredentialGet: (key: string) => Promise<SecureCredential | null>
+secureCredentialSet: (key: string, value: { username: string; password: string }) => Promise<{ passwordSaved: boolean }>
+secureCredentialDelete: (key: string) => Promise<void>
 ```
 
 - [ ] **Step 2: Expose preload methods**
@@ -528,42 +541,42 @@ import { BrowserWindow, Notification, app, clipboard, dialog, ipcMain, safeStora
 Add handlers after existing store handlers:
 
 ```ts
-  ipcMain.handle("secure-credential-get", (_event: IpcMainInvokeEvent, key: string) => {
-    const stored = getStore("travelsky.secure-credentials").get(key)
-    if (!stored || typeof stored !== "object") return null
-    const item = stored as { username?: unknown; password?: unknown }
-    if (typeof item.username !== "string") return null
-    if (typeof item.password !== "string") {
-      return { username: item.username, password: null, passwordAvailable: false }
-    }
+ipcMain.handle("secure-credential-get", (_event: IpcMainInvokeEvent, key: string) => {
+  const stored = getStore("travelsky.secure-credentials").get(key)
+  if (!stored || typeof stored !== "object") return null
+  const item = stored as { username?: unknown; password?: unknown }
+  if (typeof item.username !== "string") return null
+  if (typeof item.password !== "string") {
+    return { username: item.username, password: null, passwordAvailable: false }
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { username: item.username, password: null, passwordAvailable: false }
+  }
+  return {
+    username: item.username,
+    password: safeStorage.decryptString(Buffer.from(item.password, "base64")),
+    passwordAvailable: true,
+  }
+})
+ipcMain.handle(
+  "secure-credential-set",
+  (_event: IpcMainInvokeEvent, key: string, value: { username: string; password: string }) => {
     if (!safeStorage.isEncryptionAvailable()) {
-      return { username: item.username, password: null, passwordAvailable: false }
-    }
-    return {
-      username: item.username,
-      password: safeStorage.decryptString(Buffer.from(item.password, "base64")),
-      passwordAvailable: true,
-    }
-  })
-  ipcMain.handle(
-    "secure-credential-set",
-    (_event: IpcMainInvokeEvent, key: string, value: { username: string; password: string }) => {
-      if (!safeStorage.isEncryptionAvailable()) {
-        getStore("travelsky.secure-credentials").set(key, {
-          username: value.username,
-        })
-        return { passwordSaved: false }
-      }
       getStore("travelsky.secure-credentials").set(key, {
         username: value.username,
-        password: safeStorage.encryptString(value.password).toString("base64"),
       })
-      return { passwordSaved: true }
-    },
-  )
-  ipcMain.handle("secure-credential-delete", (_event: IpcMainInvokeEvent, key: string) => {
-    getStore("travelsky.secure-credentials").delete(key)
-  })
+      return { passwordSaved: false }
+    }
+    getStore("travelsky.secure-credentials").set(key, {
+      username: value.username,
+      password: safeStorage.encryptString(value.password).toString("base64"),
+    })
+    return { passwordSaved: true }
+  },
+)
+ipcMain.handle("secure-credential-delete", (_event: IpcMainInvokeEvent, key: string) => {
+  getStore("travelsky.secure-credentials").delete(key)
+})
 ```
 
 - [ ] **Step 4: Typecheck Desktop**
@@ -587,6 +600,7 @@ git commit -m "feat: add Desktop secure credential IPC"
 ### Task 5: TravelSky App Auth Helper
 
 **Files:**
+
 - Create: `packages/app/src/travelsky/auth.ts`
 - Create: `packages/app/src/travelsky/auth.test.ts`
 
@@ -664,7 +678,9 @@ export namespace TravelSkyAuth {
   }
 
   export async function remembered(platform: Platform): Promise<Remembered> {
-    const item = await api(platform)?.secureCredentialGet(key).catch(() => null)
+    const item = await api(platform)
+      ?.secureCredentialGet(key)
+      .catch(() => null)
     if (!item) return { username: "", password: "", remembered: false, passwordAvailable: false }
     return {
       username: item.username,
@@ -675,12 +691,16 @@ export namespace TravelSkyAuth {
   }
 
   export async function save(platform: Platform, input: { username: string; password: string }) {
-    const result = await api(platform)?.secureCredentialSet(key, input).catch(() => undefined)
+    const result = await api(platform)
+      ?.secureCredentialSet(key, input)
+      .catch(() => undefined)
     return result?.passwordSaved === true
   }
 
   export async function clear(platform: Platform) {
-    await api(platform)?.secureCredentialDelete(key).catch(() => undefined)
+    await api(platform)
+      ?.secureCredentialDelete(key)
+      .catch(() => undefined)
   }
 }
 ```
@@ -706,6 +726,7 @@ git commit -m "feat: add TravelSky Desktop auth helper"
 ### Task 6: Auth Context Remember and Recover
 
 **Files:**
+
 - Modify: `packages/app/src/context/auth.tsx`
 
 - [ ] **Step 1: Extend auth context public API**
@@ -725,11 +746,11 @@ Change login signature:
 After successful `setStore(...)`, add:
 
 ```ts
-        if (remember) {
-          await TravelSkyAuth.save(platform, { username, password })
-          return
-        }
-        await TravelSkyAuth.clear(platform)
+if (remember) {
+  await TravelSkyAuth.save(platform, { username, password })
+  return
+}
+await TravelSkyAuth.clear(platform)
 ```
 
 - [ ] **Step 2: Add recover method**
@@ -774,6 +795,7 @@ git commit -m "feat: recover Desktop auth from remembered credentials"
 ### Task 7: Login UI Remember Me
 
 **Files:**
+
 - Modify: `packages/app/src/pages/login.tsx`
 
 - [ ] **Step 1: Add imports**
@@ -791,14 +813,14 @@ import { TravelSkyAuth } from "@/travelsky/auth"
 Add `remember`:
 
 ```ts
-  const platform = usePlatform()
-  const [form, setForm] = createStore({
-    username: "",
-    password: "",
-    remember: false,
-    loading: false,
-    error: "",
-  })
+const platform = usePlatform()
+const [form, setForm] = createStore({
+  username: "",
+  password: "",
+  remember: false,
+  loading: false,
+  error: "",
+})
 ```
 
 - [ ] **Step 3: Load remembered credentials**
@@ -806,15 +828,15 @@ Add `remember`:
 Add before `submit`:
 
 ```ts
-  onMount(() => {
-    void TravelSkyAuth.remembered(platform).then((saved) => {
-      setForm({
-        username: saved.username,
-        password: saved.password,
-        remember: saved.remembered,
-      })
+onMount(() => {
+  void TravelSkyAuth.remembered(platform).then((saved) => {
+    setForm({
+      username: saved.username,
+      password: saved.password,
+      remember: saved.remembered,
     })
   })
+})
 ```
 
 - [ ] **Step 4: Pass remember flag**
@@ -836,14 +858,14 @@ to:
 Add between password field and error block:
 
 ```tsx
-          <label class="flex items-center gap-2 text-13-regular text-text-base">
-            <input
-              type="checkbox"
-              checked={form.remember}
-              onChange={(event) => setForm("remember", event.currentTarget.checked)}
-            />
-            <span>记住我</span>
-          </label>
+<label class="flex items-center gap-2 text-13-regular text-text-base">
+  <input
+    type="checkbox"
+    checked={form.remember}
+    onChange={(event) => setForm("remember", event.currentTarget.checked)}
+  />
+  <span>记住我</span>
+</label>
 ```
 
 - [ ] **Step 6: Run app typecheck**
@@ -867,6 +889,7 @@ git commit -m "feat: add Desktop remember me login"
 ### Task 8: Model List Recovery
 
 **Files:**
+
 - Modify: `packages/app/src/components/dialog-select-model.tsx`
 - Modify: `packages/app/src/components/dialog-select-model-unpaid.tsx`
 
@@ -883,18 +906,18 @@ import { TravelSkyAuth } from "@/travelsky/auth"
 Inside the `createResource` function after `const data = ...`, add:
 
 ```ts
-      if (TravelSkyAuth.expired(data)) {
-        const recovered = await auth.recover()
-        if (recovered) {
-          const retry = await globalSDK.client.provider.list()
-          return buildModelResult(retry.data ?? { all: [], connected: [], default: {} })
-        }
-        void auth.logout().then(() => navigate("/login"))
-        return {
-          ok: false as const,
-          models: [],
-        }
-      }
+if (TravelSkyAuth.expired(data)) {
+  const recovered = await auth.recover()
+  if (recovered) {
+    const retry = await globalSDK.client.provider.list()
+    return buildModelResult(retry.data ?? { all: [], connected: [], default: {} })
+  }
+  void auth.logout().then(() => navigate("/login"))
+  return {
+    ok: false as const,
+    models: [],
+  }
+}
 ```
 
 Implement `buildModelResult(data)` by extracting the existing `enterprise/allowed/connected/models` transformation into a local function in `dialog-select-model.tsx`. Use the same pattern in `dialog-select-model-unpaid.tsx` with that file's current model result shape.
@@ -904,10 +927,10 @@ Implement `buildModelResult(data)` by extracting the existing `enterprise/allowe
 Leave the existing `catch` branch that checks `message.toLowerCase().includes("unauthorized")`, but prefer `auth.recover()` before logout:
 
 ```ts
-      if (message.toLowerCase().includes("unauthorized")) {
-        const recovered = await auth.recover()
-        if (!recovered) void auth.logout().then(() => navigate("/login"))
-      }
+if (message.toLowerCase().includes("unauthorized")) {
+  const recovered = await auth.recover()
+  if (!recovered) void auth.logout().then(() => navigate("/login"))
+}
 ```
 
 - [ ] **Step 4: Run app typecheck**
@@ -931,6 +954,7 @@ git commit -m "feat: recover expired Tempo model auth"
 ### Task 9: Full Verification
 
 **Files:**
+
 - No source edits expected.
 
 - [ ] **Step 1: Run opencode focused tests**
@@ -1009,6 +1033,7 @@ git commit -m "fix: complete Desktop auth recovery verification"
 ### Task 10: Sapphire Baseline Update
 
 **Files:**
+
 - Modify: `travelsky/changes-baseline.md`
 - Create or modify: `travelsky/baseline-checklists/desktop-auth.md`
 

@@ -141,7 +141,7 @@
 ## 数据上报处理
 
 - 数据上报属于后台二开能力，不应打断用户操作。
-- `TempoMetric.send()` 遇到 Tempo token 失效时，记录 trace 并跳过本次上报。
+- `TempoMetric.sendGeneration()`/`sendAdoption()` 遇到 Tempo token 失效时，记录 trace 并跳过本次上报。
 - 第一阶段不为了数据上报把用户密码发送给 server 常驻保存。
 - 用户下次打开模型列表或显式触发二开模型链路时，再由前端完成静默恢复或跳登录。
 

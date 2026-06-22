@@ -10,7 +10,53 @@ describe("tempo metric", () => {
     globalThis.fetch = originalFetch
   })
 
-  test("posts metric to tempo host with cookie", async () => {
+  test("posts generation record to tempo host with cookie and returns qaid", async () => {
+    let req: Request | undefined
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      req = new Request(input, init)
+      return new Response(JSON.stringify({ success: true, data: "qa-123" }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    TempoSession.set("local", { token: "tempo-token" })
+
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
+    })
+
+    expect(qaid).toBe("qa-123")
+    expect(req).toBeDefined()
+    expect(req?.url).toBe("https://tempo.travelsky.com.cn/ai/data/api/record/saveGeneration")
+    expect(req?.method).toBe("POST")
+    expect(req?.headers.get("cookie")).toBe("crowd.token_key=tempo-token")
+    expect(await req?.json()).toEqual({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
+    })
+  })
+
+  test("posts adoption record with generation qaid", async () => {
     let req: Request | undefined
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -20,21 +66,23 @@ describe("tempo metric", () => {
 
     TempoSession.set("local", { token: "tempo-token" })
 
-    const ok = await TempoMetric.send({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+    const ok = await TempoMetric.sendAdoption({
+      qaid: "qa-123",
+      adoptedLines: "5",
+      adoptedContent: "",
+      deletedLines: "1",
     })
 
     expect(ok).toBeTrue()
     expect(req).toBeDefined()
-    expect(req?.url).toBe("https://tempo.travelsky.com.cn/ai/data/api/open/code/metric/add")
+    expect(req?.url).toBe("https://tempo.travelsky.com.cn/record/addAdoption")
     expect(req?.method).toBe("POST")
     expect(req?.headers.get("cookie")).toBe("crowd.token_key=tempo-token")
     expect(await req?.json()).toEqual({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+      qaid: "qa-123",
+      adoptedLines: "5",
+      adoptedContent: "",
+      deletedLines: "1",
     })
   })
 
@@ -45,12 +93,21 @@ describe("tempo metric", () => {
       return new Response("ok", { status: 200 })
     }) as unknown as typeof fetch
 
-    const ok = await TempoMetric.send({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
     })
-    expect(ok).toBeFalse()
+    expect(qaid).toBeUndefined()
     expect(hit).toBeFalse()
   })
 
@@ -67,16 +124,25 @@ describe("tempo metric", () => {
 
     TempoSession.set("local", { token: "expired-token" })
 
-    const ok = await TempoMetric.send({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
     })
 
-    expect(ok).toBeFalse()
+    expect(qaid).toBeUndefined()
   })
 
-  test("returns false for failed metric payload", async () => {
+  test("returns undefined for failed generation payload", async () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
@@ -89,27 +155,45 @@ describe("tempo metric", () => {
 
     TempoSession.set("local", { token: "tempo-token" })
 
-    const ok = await TempoMetric.send({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
     })
 
-    expect(ok).toBeFalse()
+    expect(qaid).toBeUndefined()
   })
 
-  test("returns false for non-ok metric response", async () => {
+  test("returns undefined for non-ok generation response", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ success: true }), { status: 500 })) as unknown as typeof fetch
 
     TempoSession.set("local", { token: "tempo-token" })
 
-    const ok = await TempoMetric.send({
-      text: "8",
-      other: "{}",
-      modelName: "qwen-1",
+    const qaid = await TempoMetric.sendGeneration({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "8",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "opencode",
+      requestContent: "write code",
+      responseContent: "done",
     })
 
-    expect(ok).toBeFalse()
+    expect(qaid).toBeUndefined()
   })
 })

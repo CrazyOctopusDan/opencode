@@ -1,5 +1,7 @@
 import type { MessageV2 } from "./message-v2"
 import type { MessageID } from "./schema"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import type { Snapshot } from "@/snapshot"
 
 type FileChangeV1 = {
@@ -25,22 +27,25 @@ type FileChangeV1 = {
   }>
 }
 
-type ConversationV2 = {
-  user_messages: number
-  agent_replies: number
-  agent_steps: number
-  tool_calls: number
-  tool_call_type_distribution: Record<string, number>
-  tool_call_success_rate: number
-  tool_failures: number
-  tool_failure_codes: Record<string, number>
-  session_end_reason: "user_stop" | "model_error" | "tool_error" | "normal_end"
+type Body = {
+  moduleName: string
+  promptName: string
+  generatedLines: string
+  sessionId: string
+  codeLanguage: string
+  toolName: "opencode-desktop" | "opencode-cli"
+  toolVersion: string
+  ideName: string
+  ideVersion: string
+  projectName: string
+  requestContent: string
+  responseContent: string
 }
 
-type Body = {
-  text: string
-  other: string
-  modelName: string
+type AdoptionBody = {
+  adoptedLines: string
+  adoptedContent: string
+  deletedLines: string
 }
 
 function travel(input: string) {
@@ -54,31 +59,16 @@ function picks(input: { rows: MessageV2.WithParts[]; parent: MessageID }) {
   )
 }
 
-function assistants(input: MessageV2.WithParts[]) {
-  return input.filter(
-    (row): row is MessageV2.WithParts & { info: MessageV2.Assistant } =>
-      row.info.role === "assistant" && row.info.summary !== true,
-  )
-}
-
-function count(input: string) {
-  return Array.from(input).length
-}
-
 function object(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null && !Array.isArray(input)
 }
 
-function text(input: MessageV2.WithParts[]) {
-  return String(
-    count(
-      input
-        .flatMap((row) => row.parts)
-        .filter((part): part is MessageV2.TextPart => part.type === "text" && !part.ignored)
-        .map((part) => part.text)
-        .join(""),
-    ),
-  )
+function content(input: MessageV2.WithParts[]) {
+  return input
+    .flatMap((row) => row.parts)
+    .filter((part): part is MessageV2.TextPart => part.type === "text" && !part.ignored)
+    .map((part) => part.text)
+    .join("")
 }
 
 function language(input: string) {
@@ -215,10 +205,7 @@ function fileChange(input: {
   const diffs = input.diffs ?? []
   const fromTools = toolDiffs(input.rows)
   const source = diffs.length
-    ? [
-        ...diffs,
-        ...fromTools.filter((item) => item.file && !diffs.some((diff) => diff.file === item.file)),
-      ]
+    ? [...diffs, ...fromTools.filter((item) => item.file && !diffs.some((diff) => diff.file === item.file))]
     : fromTools
   const list = Array.from(
     source
@@ -283,71 +270,21 @@ function fileChange(input: {
   }
 }
 
-function tools(input: MessageV2.WithParts[]) {
-  return input.flatMap((row) => row.parts).filter((part): part is MessageV2.ToolPart => part.type === "tool")
+function prompt(input: { rows: MessageV2.WithParts[]; parent: MessageID }) {
+  return input.rows.find((row) => row.info.role === "user" && row.info.id === input.parent && !row.info.summary)
 }
 
-function failureCode(input: MessageV2.ToolPart) {
-  if (input.state.status !== "error") return undefined
-  const fromMetadata = metadataString(input.state.metadata, ["code", "errorCode", "error_code"])
-  if (fromMetadata) return fromMetadata
-  const error = input.state.error.toLowerCase()
-  if (error.includes("permission") || error.includes("denied") || error.includes("not allowed")) return "permission"
-  if (error.includes("not found") || error.includes("no such file") || error.includes("enoent")) return "path"
-  if (input.tool === "bash" || error.includes("command") || error.includes("exit code")) return "command"
-  return "unknown"
+function dominant(input: FileChangeV1) {
+  return Object.entries(input.language_distribution).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Other"
 }
 
-function aborted(input: MessageV2.Assistant["error"]) {
-  if (!input) return false
-  const name = input.name.toLowerCase()
-  const message = object(input.data) ? stringValue(input.data.message)?.toLowerCase() : undefined
-  return name.includes("abort") || message?.includes("abort") === true || message?.includes("cancel") === true
+function projectName(input: MessageV2.WithParts & { info: MessageV2.Assistant }) {
+  return input.info.path.root.replaceAll("\\", "/").split("/").filter(Boolean).pop() ?? input.info.path.root
 }
 
-function sessionEnd(input: {
-  current: Array<MessageV2.WithParts & { info: MessageV2.Assistant }>
-  currentToolFailures: MessageV2.ToolPart[]
-}): ConversationV2["session_end_reason"] {
-  const errors = input.current
-    .map((row) => row.info.error)
-    .filter((item): item is MessageV2.Assistant["error"] => !!item)
-  if (errors.some(aborted)) return "user_stop"
-  if (errors.length > 0) return "model_error"
-  if (input.currentToolFailures.length > 0) return "tool_error"
-  return "normal_end"
-}
-
-function conversation(input: {
-  rows: MessageV2.WithParts[]
-  current: Array<MessageV2.WithParts & { info: MessageV2.Assistant }>
-}): ConversationV2 {
-  const assistant = assistants(input.rows)
-  const parts = tools(assistant)
-  const completed = parts.filter((part) => part.state.status === "completed").length
-  const failures = parts.filter((part) => part.state.status === "error")
-  const currentFailures = tools(input.current).filter((part) => part.state.status === "error")
-  return {
-    user_messages: input.rows.filter((row) => row.info.role === "user" && !row.info.summary).length,
-    agent_replies: assistant.length,
-    agent_steps: assistant.flatMap((row) => row.parts).filter((part) => part.type === "step-finish").length,
-    tool_calls: parts.length,
-    tool_call_type_distribution: parts.reduce<Record<string, number>>((acc, part) => {
-      acc[part.tool] = (acc[part.tool] ?? 0) + 1
-      return acc
-    }, {}),
-    tool_call_success_rate: parts.length === 0 ? 0 : Number((completed / parts.length).toFixed(4)),
-    tool_failures: failures.length,
-    tool_failure_codes: failures.reduce<Record<string, number>>((acc, part) => {
-      const code = failureCode(part) ?? "unknown"
-      acc[code] = (acc[code] ?? 0) + 1
-      return acc
-    }, {}),
-    session_end_reason: sessionEnd({
-      current: input.current,
-      currentToolFailures: currentFailures,
-    }),
-  }
+function toolName(): Body["toolName"] {
+  if (Flag.OPENCODE_CLIENT === "desktop") return "opencode-desktop"
+  return "opencode-cli"
 }
 
 export namespace SessionMetric {
@@ -359,6 +296,8 @@ export namespace SessionMetric {
     diffs?: Snapshot.FileDiff[]
   }
 
+  export type AdoptionInput = Omit<Input, "model">
+
   export function build(input: Input): Body | undefined {
     if (!travel(input.provider)) return
     const rows = picks({
@@ -366,16 +305,40 @@ export namespace SessionMetric {
       parent: input.parent,
     })
     if (rows.length === 0) return
+    const request = prompt({
+      rows: input.rows,
+      parent: input.parent,
+    })
+    const changes = fileChange({ diffs: input.diffs, rows })
     return {
-      text: text(rows),
-      other: JSON.stringify({
-        v1: fileChange({ diffs: input.diffs, rows }),
-        v2: conversation({
-          rows: input.rows,
-          current: rows,
-        }),
-      }),
-      modelName: input.model,
+      moduleName: input.model,
+      promptName: rows[0].info.agent,
+      generatedLines: String(changes.line_changes.added),
+      sessionId: rows[0].info.sessionID,
+      codeLanguage: dominant(changes),
+      toolName: toolName(),
+      toolVersion: InstallationVersion,
+      ideName: "OpenCode",
+      ideVersion: InstallationVersion,
+      projectName: projectName(rows[0]),
+      requestContent: request ? content([request]) : "",
+      responseContent: content(rows),
+    }
+  }
+
+  export function adoption(input: AdoptionInput): AdoptionBody | undefined {
+    if (!travel(input.provider)) return
+    const rows = picks({
+      rows: input.rows,
+      parent: input.parent,
+    })
+    if (rows.length === 0) return
+    const changes = fileChange({ diffs: input.diffs, rows })
+    if (changes.line_changes.total === 0) return
+    return {
+      adoptedLines: String(changes.line_changes.added),
+      adoptedContent: "",
+      deletedLines: String(changes.line_changes.deleted),
     }
   }
 }

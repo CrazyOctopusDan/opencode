@@ -164,7 +164,58 @@ function assistant(input: {
 }
 
 describe("session metric", () => {
-  test("builds v2 conversation stats from visible session messages", () => {
+  test("builds generation record payload from current prompt and assistant answer", () => {
+    const rows = [
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "write code" }),
+      assistant({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "const a = 1\nconst b = 2",
+        tools: [
+          {
+            name: "write",
+            status: "completed",
+            metadata: {
+              filediff: {
+                file: "/tmp/opencode/src/index.ts",
+                status: "added",
+                additions: 2,
+                deletions: 0,
+                patch: "",
+              },
+            },
+          },
+        ],
+      }),
+    ]
+
+    const body = SessionMetric.build({
+      rows,
+      parent: mid("u1"),
+      model: "qwen-1",
+      provider: "travelSky",
+      diffs: [],
+    })
+
+    expect(body).toEqual({
+      moduleName: "qwen-1",
+      promptName: "build",
+      generatedLines: "2",
+      sessionId: "ses_1",
+      codeLanguage: "TS",
+      toolName: "opencode-cli",
+      toolVersion: "local",
+      ideName: "OpenCode",
+      ideVersion: "local",
+      projectName: "tmp",
+      requestContent: "write code",
+      responseContent: "const a = 1\nconst b = 2",
+    })
+  })
+
+  test("builds request and response content from visible session messages", () => {
     const rows = [
       user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "first" }),
       assistant({
@@ -204,32 +255,13 @@ describe("session metric", () => {
     })
 
     expect(body).toBeDefined()
-    expect(body?.text).toBe("10")
-    expect(body?.modelName).toBe("qwen-1")
-
-    const other = JSON.parse(body?.other ?? "{}")
-    expect(other.token).toBeUndefined()
-    expect(other.tool).toBeUndefined()
-    expect(other.answer_code).toBeUndefined()
-    expect(other.v2).toEqual({
-      user_messages: 2,
-      agent_replies: 3,
-      agent_steps: 4,
-      tool_calls: 2,
-      tool_call_type_distribution: {
-        bash: 1,
-        grep: 1,
-      },
-      tool_call_success_rate: 0.5,
-      tool_failures: 1,
-      tool_failure_codes: {
-        EACCES: 1,
-      },
-      session_end_reason: "tool_error",
-    })
+    expect(body?.moduleName).toBe("qwen-1")
+    expect(body?.promptName).toBe("build")
+    expect(body?.requestContent).toBe("first")
+    expect(body?.responseContent).toBe("helloworld")
   })
 
-  test("builds v1 file change stats from diffs and edit events", () => {
+  test("builds generated line count and language from diffs and edit events", () => {
     const rows = [
       user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change files" }),
       assistant({
@@ -275,54 +307,74 @@ describe("session metric", () => {
       ],
     })
 
-    const other = JSON.parse(body?.other ?? "{}")
-    expect(other.v1).toEqual({
-      modified_files: 1,
-      added_files: 1,
-      deleted_files: 1,
-      line_changes: {
-        added: 3,
-        deleted: 5,
-        total: 8,
-        net: -2,
-      },
-      language_distribution: {
-        TS: 1,
-        JS: 1,
-        Go: 1,
-      },
-      max_single_file_changed_lines: 4,
-      repeated_modified_files: 1,
-      by_file: [
+    expect(body?.generatedLines).toBe("3")
+    expect(body?.codeLanguage).toBe("TS")
+  })
+
+  test("builds adoption payload from final file changes with empty adopted content", () => {
+    const rows = [
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change files" }),
+      assistant({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "changed files",
+      }),
+    ]
+
+    const adoption = SessionMetric.adoption({
+      rows,
+      parent: mid("u1"),
+      provider: "travelSky",
+      diffs: [
         {
           file: "src/new.ts",
           status: "added",
-          language: "TS",
           additions: 2,
           deletions: 0,
-          changed_lines: 2,
+          patch: "",
         },
         {
           file: "src/old.js",
           status: "modified",
-          language: "JS",
           additions: 1,
           deletions: 1,
-          changed_lines: 2,
-        },
-        {
-          file: "cmd/main.go",
-          status: "deleted",
-          language: "Go",
-          additions: 0,
-          deletions: 4,
-          changed_lines: 4,
+          patch: "",
         },
       ],
     })
+
+    expect(adoption).toEqual({
+      adoptedLines: "3",
+      adoptedContent: "",
+      deletedLines: "1",
+    })
   })
 
-  test("builds v1 file change stats from tool metadata when diffs are unavailable", () => {
+  test("skips adoption payload when no files changed", () => {
+    const rows = [
+      user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "answer only" }),
+      assistant({
+        id: "a1",
+        parent: "u1",
+        provider: "travelSky",
+        model: "qwen-1",
+        text: "no file changes",
+      }),
+    ]
+
+    const adoption = SessionMetric.adoption({
+      rows,
+      parent: mid("u1"),
+      provider: "travelSky",
+      diffs: [],
+    })
+
+    expect(adoption).toBeUndefined()
+  })
+
+  test("builds generated line count and language from tool metadata when diffs are unavailable", () => {
     const rows = [
       user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "change files" }),
       assistant({
@@ -379,51 +431,8 @@ describe("session metric", () => {
       diffs: [],
     })
 
-    const other = JSON.parse(body?.other ?? "{}")
-    expect(other.v1).toEqual({
-      modified_files: 1,
-      added_files: 1,
-      deleted_files: 1,
-      line_changes: {
-        added: 5,
-        deleted: 5,
-        total: 10,
-        net: 0,
-      },
-      language_distribution: {
-        TS: 1,
-        Python: 1,
-        Go: 1,
-      },
-      max_single_file_changed_lines: 4,
-      repeated_modified_files: 0,
-      by_file: [
-        {
-          file: "src/edit.ts",
-          status: "modified",
-          language: "TS",
-          additions: 3,
-          deletions: 1,
-          changed_lines: 4,
-        },
-        {
-          file: "src/new.py",
-          status: "added",
-          language: "Python",
-          additions: 2,
-          deletions: 0,
-          changed_lines: 2,
-        },
-        {
-          file: "src/old.go",
-          status: "deleted",
-          language: "Go",
-          additions: 0,
-          deletions: 4,
-          changed_lines: 4,
-        },
-      ],
-    })
+    expect(body?.generatedLines).toBe("5")
+    expect(body?.codeLanguage).toBe("TS")
   })
 
   test("keeps external tool file changes when snapshot diffs only cover the project", () => {
@@ -482,40 +491,8 @@ describe("session metric", () => {
       ],
     })
 
-    const other = JSON.parse(body?.other ?? "{}")
-    expect(other.v1).toMatchObject({
-      modified_files: 1,
-      added_files: 1,
-      deleted_files: 0,
-      line_changes: {
-        added: 7,
-        deleted: 1,
-        total: 8,
-        net: 6,
-      },
-      language_distribution: {
-        TS: 2,
-      },
-      max_single_file_changed_lines: 5,
-    })
-    expect(other.v1.by_file).toEqual([
-      {
-        file: "src/project.ts",
-        status: "modified",
-        language: "TS",
-        additions: 2,
-        deletions: 1,
-        changed_lines: 3,
-      },
-      {
-        file: "/Users/test/external/algorithm.ts",
-        status: "added",
-        language: "TS",
-        additions: 5,
-        deletions: 0,
-        changed_lines: 5,
-      },
-    ])
+    expect(body?.generatedLines).toBe("7")
+    expect(body?.codeLanguage).toBe("TS")
   })
 
   test("skips non-travelsky provider", () => {
