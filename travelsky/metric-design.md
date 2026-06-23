@@ -14,8 +14,8 @@
   - `generatedLines`：生成代码行数，优先来自本轮最终文件 diff 的新增行数，并合并工具 metadata 兜底
   - `sessionId`：会话 ID
   - `codeLanguage`：代码语言，按本轮文件变更语言分布取主语言
-  - `toolName`：插件名称，Desktop 为 `opencode-desktop`，其他本地 client 为 `opencode-cli`
-  - `toolVersion`：插件版本，使用当前 opencode 安装版本
+  - `toolName`：插件名称，优先使用显式 `OPENCODE_TOOL_NAME`；Desktop sidecar 注入 `opencode-desktop`，其他本地 client 默认为 `opencode-cli`
+  - `toolVersion`：插件版本，使用当前 opencode 安装版本；发布版本源为 `packages/opencode/package.json`，GitHub Actions 读取后通过 `OPENCODE_VERSION` 注入 build
   - `ideName`：IDE 名称，当前固定为 `OpenCode`
   - `ideVersion`：IDE 版本，使用当前 opencode 安装版本
   - `projectName`：代码项目名称，使用 assistant path root 的目录名
@@ -54,6 +54,19 @@
   - `deletedLines` 使用本轮最终文件 diff 的删除行数。
   - `adoptedContent` 固定为空字符串。
   - 如果生成记录失败或本轮最终没有文件变更，则不发送采纳量。
+
+## 版本与载体识别
+
+- `toolName`：
+  - 统计构建时优先读取 `OPENCODE_TOOL_NAME`，仅接受 `opencode-desktop` 或 `opencode-cli`。
+  - Desktop 普通 sidecar 在 Electron main 进程环境中设置 `OPENCODE_TOOL_NAME=opencode-desktop`；WSL sidecar 启动脚本同步导出该变量。
+  - 如果没有显式变量，则兼容旧逻辑：`OPENCODE_CLIENT=desktop` 时为 `opencode-desktop`，否则为 `opencode-cli`。
+- `toolVersion` / `ideVersion`：
+  - 单一版本源为 `packages/opencode/package.json` 的 `version`。
+  - fork 的 GitHub Actions 先读取该版本，再把它作为 `OPENCODE_VERSION` 传入 CLI build 和 Desktop prepare。
+  - CLI 二进制 build 必须注入 `OPENCODE_TOOL_NAME=opencode-cli`；Desktop sidecar 使用运行时环境注入 `OPENCODE_TOOL_NAME=opencode-desktop`。
+  - CLI 二进制 build 与 Desktop sidecar 使用的 node server build 都必须通过 `define.OPENCODE_VERSION = Script.version` 注入 `InstallationVersion`，避免生产包上报 `local`。
+  - Desktop `packages/desktop/scripts/prepare.ts` 会把同一个 `Script.version` 写入 `packages/desktop/package.json`，保证 electron-builder 打包版本和统计版本同源。
 
 ## 第一版统计矩阵（历史实现，保留供后续维度变化参考）
 
@@ -122,6 +135,14 @@
   - 负责生成记录请求体构建。
   - 继续复用第一版文件变更聚合能力，为 `generatedLines` 与 `codeLanguage` 提供来源。
   - 负责从同一份文件变更聚合构建采纳量行数，`adoptedContent` 固定为空。
+- 轻量修改 `packages/core/src/flag/flag.ts`
+  - 暴露 `OPENCODE_TOOL_NAME`，供 metric 显式区分 `opencode-desktop` 与 `opencode-cli`。
+- 轻量修改 `packages/desktop/src/main/server.ts` 与 `packages/desktop/src/main/wsl/sidecar.ts`
+  - Desktop sidecar 与 WSL sidecar 显式注入 `OPENCODE_TOOL_NAME=opencode-desktop`，避免生产打包后依赖本地启动方式推断。
+- 轻量修改 `packages/opencode/script/build.ts`
+  - 为 CLI 二进制打包注入 `OPENCODE_TOOL_NAME=opencode-cli`，保证 CLI 生产包生成记录上报为 CLI。
+- 轻量修改 `packages/opencode/script/build-node.ts`
+  - 为 Desktop sidecar 引用的 node server bundle 注入 `OPENCODE_VERSION`，保证 `InstallationVersion` 能取到 GitHub Actions 发布版本。
 - 轻量修改 `packages/opencode/src/tool/write.ts`
   - 为 `write` 工具补充 `metadata.filediff`，供 v1 在 snapshot diff 缺失时兜底统计文件状态与行数。
 - 轻量修改 `packages/opencode/src/session/prompt.ts`
@@ -134,7 +155,9 @@
 ## 验证
 
 - `packages/opencode/test/session/metric.test.ts`
-  - 验证生成记录请求体、生成行数、语言、请求/响应内容、采纳量空内容、provider 过滤口径。
+  - 验证生成记录请求体、生成行数、语言、请求/响应内容、采纳量空内容、provider 过滤口径，以及显式 `OPENCODE_TOOL_NAME` 优先级。
+- `packages/opencode/test/script/build-node.test.ts`
+  - 验证 Desktop sidecar 使用的 node server build 保持 `OPENCODE_VERSION` 注入，以及 CLI build 保持 `OPENCODE_TOOL_NAME=opencode-cli` 注入。
 - `packages/opencode/test/server/tempo-metric.test.ts`
   - 验证生成记录 URL、采纳量 URL、Cookie、请求体、采纳内容为空、无登录态跳过、失败/过期静默处理。
 - `packages/opencode/test/tool/write.test.ts`

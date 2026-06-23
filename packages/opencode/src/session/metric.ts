@@ -283,6 +283,9 @@ function projectName(input: MessageV2.WithParts & { info: MessageV2.Assistant })
 }
 
 function toolName(): Body["toolName"] {
+  if (Flag.OPENCODE_TOOL_NAME === "opencode-desktop" || Flag.OPENCODE_TOOL_NAME === "opencode-cli") {
+    return Flag.OPENCODE_TOOL_NAME
+  }
   if (Flag.OPENCODE_CLIENT === "desktop") return "opencode-desktop"
   return "opencode-cli"
 }

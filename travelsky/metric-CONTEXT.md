@@ -27,6 +27,8 @@
 - **D-04:** `moduleName` 使用最终 assistant 的 `modelID`；`promptName` 使用 assistant 所属 agent。
 - **D-05:** `requestContent` 使用本轮父 user message 文本；`responseContent` 使用同一 `parentID` 下 assistant 文本。
 - **D-06:** `generatedLines` 使用第一版文件变更聚合得到的新增行数；`codeLanguage` 使用该聚合中的主语言。
+- **D-13:** `toolName` 优先使用显式 `OPENCODE_TOOL_NAME`；CLI build 必须注入 `opencode-cli`，Desktop sidecar/WSL sidecar 必须注入 `opencode-desktop`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
+- **D-14:** `toolVersion` 与 `ideVersion` 使用 `InstallationVersion`，版本源固定为 `packages/opencode/package.json` 经 GitHub Actions 传入的 `OPENCODE_VERSION`；CLI build 与 Desktop node server build 都必须注入 `OPENCODE_VERSION`。
 - **D-09:** 第一版 `other.v1` 矩阵不再作为当前接口 body 发送，但其文件变更聚合仍作为 `generatedLines/codeLanguage` 的来源：优先使用完成态 `Snapshot.FileDiff`，合并 `edit/write/apply_patch` 工具 metadata 覆盖不到的文件，diff 为空时兜底到工具 metadata。
 - **D-10:** 第一版 `other.v2` 会话/工具矩阵保留在文档中作为历史口径，不进入当前生成记录接口。
 - **D-11:** 采纳量接口必须使用生成记录返回的 `data` 作为 `qaid`；只要本轮最终文件 diff 有新增或删除行，即视为采纳。
@@ -50,6 +52,7 @@
 - 优先“独立文件 + 最小接入点”，减少后续与上游合并冲突。
 - 第一版 `text/modelName/other.v1/v2` 保留在实现文档中，不再作为当前请求体发送。
 - 当前接口字段直接平铺为生成记录 body，避免后端继续解析旧矩阵。
+- 版本不在接口构建处硬编码；发布时只维护 `packages/opencode/package.json`，workflow 和 build 脚本负责把版本注入运行时代码。
 
 </specifics>
 
@@ -61,6 +64,11 @@
 
 - `packages/opencode/src/session/prompt.ts` — 会话完成点（上报触发）
 - `packages/opencode/src/session/metric.ts` — 生成记录 body 与采纳量 body 构建；复用第一版文件变更聚合计算 `generatedLines/codeLanguage/adoptedLines/deletedLines`
+- `packages/core/src/flag/flag.ts` — 暴露 `OPENCODE_TOOL_NAME`，供 metric 显式区分 Desktop 与 CLI
+- `packages/desktop/src/main/server.ts` — 普通 Desktop sidecar 环境注入 `OPENCODE_TOOL_NAME=opencode-desktop`
+- `packages/desktop/src/main/wsl/sidecar.ts` — WSL sidecar 启动脚本注入 `OPENCODE_TOOL_NAME=opencode-desktop`
+- `packages/opencode/script/build-node.ts` — Desktop sidecar node server build 注入 `OPENCODE_VERSION`
+- `packages/opencode/script/build.ts` — CLI binary build 注入 `OPENCODE_VERSION` 与 `OPENCODE_TOOL_NAME=opencode-cli`
 - `packages/opencode/src/snapshot/index.ts` — 内部 snapshot diff，非 git 目录使用当前目录作为对比根
 - `packages/opencode/src/tool/write.ts` — `write` 工具输出 `metadata.filediff`，供 snapshot diff 缺失时兜底
 - `packages/opencode/src/server/tempo-metric.ts` — 生成记录与采纳量请求发送

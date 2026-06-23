@@ -1,6 +1,10 @@
 import { Config } from "effect"
 import { InstallationChannel } from "../installation/version"
 
+declare global {
+  const OPENCODE_TOOL_NAME: string
+}
+
 export function truthy(key: string) {
   const value = process.env[key]?.toLowerCase()
   return value === "true" || value === "1"
@@ -135,5 +139,8 @@ export const Flag = {
   },
   get OPENCODE_CLIENT() {
     return process.env["OPENCODE_CLIENT"] ?? "cli"
+  },
+  get OPENCODE_TOOL_NAME() {
+    return process.env["OPENCODE_TOOL_NAME"] ?? (typeof OPENCODE_TOOL_NAME === "string" ? OPENCODE_TOOL_NAME : undefined)
   },
 }

@@ -215,6 +215,77 @@ describe("session metric", () => {
     })
   })
 
+  test("uses explicit metric tool name before client fallback", () => {
+    const previousToolName = process.env.OPENCODE_TOOL_NAME
+    const previousClient = process.env.OPENCODE_CLIENT
+    process.env.OPENCODE_TOOL_NAME = "opencode-desktop"
+    process.env.OPENCODE_CLIENT = "cli"
+    try {
+      const rows = [
+        user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "write code" }),
+        assistant({
+          id: "a1",
+          parent: "u1",
+          provider: "travelSky",
+          model: "qwen-1",
+          text: "done",
+        }),
+      ]
+
+      const body = SessionMetric.build({
+        rows,
+        parent: mid("u1"),
+        model: "qwen-1",
+        provider: "travelSky",
+      })
+
+      expect(body?.toolName).toBe("opencode-desktop")
+    } finally {
+      if (previousToolName === undefined) delete process.env.OPENCODE_TOOL_NAME
+      else process.env.OPENCODE_TOOL_NAME = previousToolName
+      if (previousClient === undefined) delete process.env.OPENCODE_CLIENT
+      else process.env.OPENCODE_CLIENT = previousClient
+    }
+  })
+
+  test("uses build-injected metric tool name before client fallback", () => {
+    const previousToolName = process.env.OPENCODE_TOOL_NAME
+    const previousClient = process.env.OPENCODE_CLIENT
+    const globalWithTool = globalThis as typeof globalThis & { OPENCODE_TOOL_NAME?: string }
+    const previousGlobalToolName = globalWithTool.OPENCODE_TOOL_NAME
+    delete process.env.OPENCODE_TOOL_NAME
+    process.env.OPENCODE_CLIENT = "desktop"
+    globalWithTool.OPENCODE_TOOL_NAME = "opencode-cli"
+    try {
+      const rows = [
+        user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "write code" }),
+        assistant({
+          id: "a1",
+          parent: "u1",
+          provider: "travelSky",
+          model: "qwen-1",
+          text: "done",
+        }),
+      ]
+
+      const body = SessionMetric.build({
+        rows,
+        parent: mid("u1"),
+        model: "qwen-1",
+        provider: "travelSky",
+      })
+
+      expect(body?.toolName).toBe("opencode-cli")
+    } finally {
+      if (previousToolName === undefined) delete process.env.OPENCODE_TOOL_NAME
+      else process.env.OPENCODE_TOOL_NAME = previousToolName
+      if (previousClient === undefined) delete process.env.OPENCODE_CLIENT
+      else process.env.OPENCODE_CLIENT = previousClient
+      if (previousGlobalToolName === undefined) delete globalWithTool.OPENCODE_TOOL_NAME
+      else globalWithTool.OPENCODE_TOOL_NAME = previousGlobalToolName
+    }
+  })
+
   test("builds request and response content from visible session messages", () => {
     const rows = [
       user({ id: "u1", provider: "travelSky", model: "qwen-1", text: "first" }),
