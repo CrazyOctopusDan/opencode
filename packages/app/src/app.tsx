@@ -453,8 +453,8 @@ export function AppInterface(props: {
       canonicalLocalServer={props.canonicalLocalServer}
       servers={props.servers}
     >
-      <GlobalProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <GlobalProvider>
           <ConnectionGate disableHealthCheck={props.disableHealthCheck}>
             <Dynamic
               component={props.router ?? Router}
@@ -485,8 +485,8 @@ export function AppInterface(props: {
               </Route>
             </Dynamic>
           </ConnectionGate>
-        </AuthProvider>
-      </GlobalProvider>
+        </GlobalProvider>
+      </AuthProvider>
     </ServerProvider>
   )
 }
