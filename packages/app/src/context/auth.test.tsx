@@ -106,6 +106,9 @@ beforeEach(() => {
     back() {},
     forward() {},
     async notify() {},
+    async openDirectoryPickerDialog() {
+      return null
+    },
     fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST" && String(_input).endsWith("/global/logout")) {
         authClears++

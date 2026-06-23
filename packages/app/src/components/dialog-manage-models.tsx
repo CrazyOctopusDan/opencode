@@ -21,7 +21,7 @@ export const DialogManageModels: Component = () => {
   const dialog = useDialog()
   const auth = useAuth()
   const navigate = useNavigate()
-  const [providerData] = createResource(() => sdk.client.provider.list().then((x) => x.data))
+  const [providerData] = createResource(() => sdk().client.provider.list().then((x) => x.data))
 
   const handleConnectProvider = () => {
     dialog.show(() => <DialogSelectProvider />)

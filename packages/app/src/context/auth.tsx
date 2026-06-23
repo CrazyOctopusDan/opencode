@@ -178,6 +178,7 @@ export function createAuthContext(input: {
 
 export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
   name: "Auth",
+  gate: false,
   init: () => {
     const platform = usePlatform()
     const server = useServer()

@@ -67,10 +67,10 @@ const ModelList: Component<{
     })
     try {
       const data = await queryClient.fetchQuery(
-        loadProvidersQuery(sdk.scope, sdk.directory, sdk.client, {
+        loadProvidersQuery(sdk().scope, sdk().directory, sdk().client, {
           recoverProviderAuth: async () => {
             if (await auth.recover()) {
-              return sdk.createClient({ directory: sdk.directory, throwOnError: true })
+              return sdk().createClient({ directory: sdk().directory, throwOnError: true })
             }
             void auth.logout().then(() => navigate("/login"))
           },

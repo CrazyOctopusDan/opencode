@@ -13,7 +13,7 @@ import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
-import { isTravelSky } from "@/cli/travelsky/provider"
+import { isTravelSky } from "../util/travelsky-provider"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 

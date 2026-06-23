@@ -41,7 +41,8 @@ export function DialogConnectProvider(props: { provider: string }) {
   })
 
   const provider = createMemo(
-    () => providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)!,
+    () =>
+      providers.all().find((item) => item.id === props.provider) ?? serverSync().data.provider.all.get(props.provider)!,
   )
   const fallback = createMemo<ProviderAuthMethod[]>(() => [
     {

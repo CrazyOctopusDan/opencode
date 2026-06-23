@@ -25,6 +25,9 @@ const webPlatform: Platform = {
 const desktopPlatform: Platform = {
   ...webPlatform,
   platform: "desktop",
+  async openDirectoryPickerDialog() {
+    return null
+  },
 }
 
 function setApi(api: SecureCredentialApi | undefined) {

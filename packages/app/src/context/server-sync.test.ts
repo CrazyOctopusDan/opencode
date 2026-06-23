@@ -3,6 +3,7 @@ import type { OpencodeClient, ProviderListResponse } from "@opencode-ai/sdk/v2/c
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
 import { listProvidersWithRecovery } from "./global-sync/bootstrap"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
+import { normalizeProviderList } from "./global-sync/utils"
 
 const providerList = (patch?: Record<string, unknown>) =>
   ({
@@ -125,7 +126,7 @@ describe("listProvidersWithRecovery", () => {
 
     expect(calls).toEqual(["recover"])
     expect(result.connected).toEqual(["travelSky"])
-    expect(result.all[0]?.models.qwen?.status).toBeUndefined()
+    expect(result.all.get("travelSky")?.models.qwen?.status).toBeUndefined()
   })
 
   test("returns an empty provider list when expired auth cannot recover", async () => {
@@ -142,7 +143,7 @@ describe("listProvidersWithRecovery", () => {
       },
     )
 
-    expect(result).toEqual(providerList())
+    expect(result).toEqual(normalizeProviderList(providerList()))
   })
 })
 

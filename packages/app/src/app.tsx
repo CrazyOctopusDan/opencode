@@ -275,19 +275,6 @@ function DraftProviders(props: ParentProps) {
   )
 }
 
-function RouterRootWithAuth(props: ParentProps<{ appChildren?: JSX.Element }>) {
-  const auth = useAuth()
-  return (
-    <Show when={auth.loggedIn()} fallback={props.children}>
-      <GlobalSDKProvider>
-        <GlobalSyncProvider>
-          <RouterRoot appChildren={props.appChildren}>{props.children}</RouterRoot>
-        </GlobalSyncProvider>
-      </GlobalSDKProvider>
-    </Show>
-  )
-}
-
 export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
   return (
     <MetaProvider>
