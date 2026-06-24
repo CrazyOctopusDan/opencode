@@ -483,7 +483,8 @@ describe("provider HttpApi", () => {
         TempoMetric.sendGeneration({
           modelName: "qwen-1",
           promptName: "build",
-          generatedLines: "8",
+          generatedLines: 8,
+          adoptedLines: 8,
           sessionId: "ses_1",
           codeLanguage: "TS",
           toolName: "opencode-cli",

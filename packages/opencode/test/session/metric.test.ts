@@ -202,7 +202,8 @@ describe("session metric", () => {
     expect(body).toEqual({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "2",
+      generatedLines: 2,
+      adoptedLines: 2,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -378,7 +379,8 @@ describe("session metric", () => {
       ],
     })
 
-    expect(body?.generatedLines).toBe("3")
+    expect(body?.generatedLines).toBe(3)
+    expect(body?.adoptedLines).toBe(3)
     expect(body?.codeLanguage).toBe("TS")
   })
 
@@ -417,9 +419,9 @@ describe("session metric", () => {
     })
 
     expect(adoption).toEqual({
-      adoptedLines: "3",
+      adoptedLines: 3,
       adoptedContent: "",
-      deletedLines: "1",
+      deletedLines: 1,
     })
   })
 
@@ -502,7 +504,8 @@ describe("session metric", () => {
       diffs: [],
     })
 
-    expect(body?.generatedLines).toBe("5")
+    expect(body?.generatedLines).toBe(5)
+    expect(body?.adoptedLines).toBe(5)
     expect(body?.codeLanguage).toBe("TS")
   })
 
@@ -562,7 +565,8 @@ describe("session metric", () => {
       ],
     })
 
-    expect(body?.generatedLines).toBe("7")
+    expect(body?.generatedLines).toBe(7)
+    expect(body?.adoptedLines).toBe(7)
     expect(body?.codeLanguage).toBe("TS")
   })
 

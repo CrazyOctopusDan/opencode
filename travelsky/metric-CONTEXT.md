@@ -16,7 +16,7 @@
 ### 上报边界
 
 - **D-01:** 仅对 `travelsky` provider 上报，避免影响其他 provider。
-- **D-02:** 使用与模型列表同源的 Tempo 主机；当前生成记录 URL 固定为 `/ai/data/api/record/saveGeneration`，采纳量 URL 固定为 `/record/addAdoption`。
+- **D-02:** 使用与模型列表同源的 Tempo 主机；当前生成记录 URL 固定为 `/ai/data/api/record/saveGeneration`，采纳量 URL 固定为 `/ai/data/api/record/addAdoption`。
 
 ### 上报时机
 
@@ -26,7 +26,7 @@
 
 - **D-04:** `modelName` 使用最终 assistant 的 `modelID`；`promptName` 使用 assistant 所属 agent。
 - **D-05:** `requestContent` 使用本轮父 user message 文本；`responseContent` 使用同一 `parentID` 下 assistant 文本。
-- **D-06:** `generatedLines` 使用第一版文件变更聚合得到的新增行数；`codeLanguage` 使用该聚合中的主语言。
+- **D-06:** `generatedLines` 与生成记录 `adoptedLines` 使用第一版文件变更聚合得到的新增行数；`codeLanguage` 使用该聚合中的主语言。
 - **D-13:** `toolName` 优先使用显式 `OPENCODE_TOOL_NAME`；CLI build 必须注入 `opencode-cli`，Desktop sidecar/WSL sidecar 必须注入 `opencode-desktop`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
 - **D-14:** `toolVersion` 与 `ideVersion` 使用 `InstallationVersion`，版本源固定为 `packages/opencode/package.json` 经 GitHub Actions 传入的 `OPENCODE_VERSION`；CLI build 与 Desktop node server build 都必须注入 `OPENCODE_VERSION`。
 - **D-09:** 第一版 `other.v1` 矩阵不再作为当前接口 body 发送，但其文件变更聚合仍作为 `generatedLines/codeLanguage` 的来源：优先使用完成态 `Snapshot.FileDiff`，合并 `edit/write/apply_patch` 工具 metadata 覆盖不到的文件，diff 为空时兜底到工具 metadata。

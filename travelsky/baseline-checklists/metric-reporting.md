@@ -21,7 +21,7 @@
 - `packages/opencode/src/snapshot/index.ts`：内部 snapshot diff 来源；非 git 目录必须用当前目录作为对比根，支撑 shell/bash 等工具产生的最终文件 diff。
 - `packages/opencode/src/tool/write.ts`：为 `write` 工具输出 `metadata.filediff`，供 `v1` 在 snapshot diff 缺失时兜底统计文件状态与行数。
 - `packages/opencode/src/server/tempo-metric.ts`：发送生成记录和采纳量请求，并保持失败/失效静默，不影响对话主链路。
-- `packages/opencode/test/session/metric.test.ts`：回归验证生成记录请求体、生成行数、语言、请求/响应内容、采纳量空内容与 provider 过滤。
+- `packages/opencode/test/session/metric.test.ts`：回归验证生成记录请求体、生成行数、语言、请求/响应内容、采纳量空内容、provider 过滤与 `toolName` 优先级。
 - `packages/desktop/src/main/metric-env.test.ts`：回归验证普通 Desktop sidecar 与 WSL sidecar 都显式注入 `OPENCODE_TOOL_NAME=opencode-desktop`。
 - `packages/opencode/test/snapshot/snapshot.test.ts`：回归验证非 git 目录也能生成 snapshot diff。
 - `packages/opencode/test/tool/write.test.ts`：回归验证 `write` 工具输出 `metadata.filediff`。
@@ -32,7 +32,7 @@
 
 - metric 仍只对 `providerID` 大小写不敏感匹配 `travelsky` 时构建上报体。
 - 生成记录接口必须是 `POST /ai/data/api/record/saveGeneration`，Header 必须携带 `Cookie: crowd.token_key=<token>`。
-- 生成记录 body 必须包含：`modelName`、`promptName`、`generatedLines`、`sessionId`、`codeLanguage`、`toolName`、`toolVersion`、`ideName`、`ideVersion`、`projectName`、`requestContent`、`responseContent`。
+- 生成记录 body 必须包含：`modelName`、`promptName`、`generatedLines`、`adoptedLines`、`sessionId`、`codeLanguage`、`toolName`、`toolVersion`、`ideName`、`ideVersion`、`projectName`、`requestContent`、`responseContent`。
 - `modelName` 必须使用最终 assistant 的 `modelID`；`promptName` 必须使用 assistant 所属 agent。
 - `toolName` 必须优先使用显式 `OPENCODE_TOOL_NAME`；仅接受 `opencode-desktop` 或 `opencode-cli`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
 - CLI 二进制 build 必须显式注入 `OPENCODE_TOOL_NAME=opencode-cli`，不能只依赖默认 fallback。
@@ -40,11 +40,11 @@
 - `toolVersion` 与 `ideVersion` 必须使用 `InstallationVersion`；发布版本源固定为 `packages/opencode/package.json` 经 GitHub Actions 传入的 `OPENCODE_VERSION`。
 - CLI binary build 与 Desktop node server build 都必须 define `OPENCODE_VERSION` 为 `Script.version`，避免生产 Desktop 上报 `local`。
 - `requestContent` 必须来自本轮父 user message 文本；`responseContent` 必须来自同一 `parentID` 下非 summary assistant 文本。
-- `generatedLines` 必须使用第一版文件变更聚合的新增行数；`codeLanguage` 必须使用该聚合中的主语言。
+- `generatedLines` 与生成记录 `adoptedLines` 必须使用第一版文件变更聚合的新增行数，且类型为 Integer；`codeLanguage` 必须使用该聚合中的主语言。
 - 生成记录响应的 `data` 必须作为采纳量接口的 `qaid` 来源。
-- 采纳量接口必须是 `POST /record/addAdoption`，body 必须包含 `qaid`、`adoptedLines`、`adoptedContent`、`deletedLines`。
+- 采纳量接口必须是 `POST /ai/data/api/record/addAdoption`，body 必须包含 `qaid`、`adoptedLines`、`adoptedContent`、`deletedLines`。
 - agent 时代必须以本轮最终文件 diff 作为采纳口径：有新增或删除行即发送采纳量；没有最终文件变更则不发送采纳量。
-- `adoptedLines` 必须等于最终 diff 新增行数；`deletedLines` 必须等于最终 diff 删除行数。
+- 采纳量 `adoptedLines` 必须等于最终 diff 新增行数，`deletedLines` 必须等于最终 diff 删除行数，且类型为 Integer。
 - `adoptedContent` 必须固定为空字符串，不能上传完整代码内容。
 - 非 git 目录不能导致 `Snapshot.track()` 禁用；内部 snapshot 必须限定在当前打开目录，不能使用 `/` 作为非 git 项目的对比根。
 - 文件改动聚合必须优先来自本轮完成态 `Snapshot.FileDiff`；同时必须合并当前回答已完成 `edit/write/apply_patch` 工具 metadata 中 snapshot 未覆盖的 `filediff/files`，尤其是会话目录外的文件。
@@ -61,7 +61,7 @@
 - 上游如果调整 `write` 工具 metadata，必须保留 `filediff.file/status/additions/deletions` 或提供等价字段，避免 `write` 创建/覆盖文件时生成行数无法统计。
 - 上游如果调整上报时机，必须保留每轮回答完成后单次生成记录上报；采纳量只能在生成记录返回 qaid 后基于同一轮最终 diff 上报，避免中间 step 重复上报。
 - 上游如果调整 Tempo metric 发送层，仍必须保持生成记录和采纳量请求失败、超时、token 失效不打扰用户对话。
-- 上游如果调整 Desktop sidecar、WSL sidecar 或 build-node 构建流程，必须重新确认 `OPENCODE_TOOL_NAME` 和 `OPENCODE_VERSION` 仍在生产包链路中可用。
+- 上游如果调整 Desktop sidecar、WSL sidecar、CLI build 或 build-node 构建流程，必须重新确认 `OPENCODE_TOOL_NAME` 和 `OPENCODE_VERSION` 仍在生产包链路中可用。
 
 ## 验证方式
 
@@ -72,7 +72,7 @@
 - 如果本机 `bun typecheck` 因 `@typescript/native-preview-darwin-arm64` wrapper 解析失败，可使用仓库已安装的 native `tsgo --noEmit` 二进制进行同等类型检查，并在结果中注明 wrapper 问题。
 - 人工检查生成记录请求体，确认 URL 为 `/ai/data/api/record/saveGeneration`，字段为当前平铺 body，且不再发送第一版 `other.v1/v2`。
 - 人工检查 GitHub Actions 发布链路，确认 fork workflow 仍从 `packages/opencode/package.json` 读取版本并传入 `OPENCODE_VERSION`。
-- 人工检查采纳量发送层，确认 `/record/addAdoption` 的 `qaid` 来自生成记录响应 `data`，且 `adoptedContent` 为空字符串。
+- 人工检查采纳量发送层，确认 `/ai/data/api/record/addAdoption` 的 `qaid` 来自生成记录响应 `data`，且 `adoptedContent` 为空字符串。
 
 ## 停止条件
 

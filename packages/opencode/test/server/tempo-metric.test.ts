@@ -8,7 +8,8 @@ function generationInput(): TempoMetric.GenerationInput {
   return {
     modelName: "qwen-1",
     promptName: "build",
-    generatedLines: "8",
+    generatedLines: 8,
+    adoptedLines: 8,
     sessionId: "ses_1",
     codeLanguage: "TS",
     toolName: "opencode-cli",
@@ -40,7 +41,8 @@ describe("tempo metric", () => {
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -60,7 +62,8 @@ describe("tempo metric", () => {
     expect(await req?.json()).toEqual({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -85,21 +88,21 @@ describe("tempo metric", () => {
 
     const ok = await TempoMetric.sendAdoption({
       qaid: "qa-123",
-      adoptedLines: "5",
+      adoptedLines: 5,
       adoptedContent: "",
-      deletedLines: "1",
+      deletedLines: 1,
     })
 
     expect(ok).toBeTrue()
     expect(req).toBeDefined()
-    expect(req?.url).toBe("https://tempo.travelsky.com.cn/record/addAdoption")
+    expect(req?.url).toBe("https://tempo.travelsky.com.cn/ai/data/api/record/addAdoption")
     expect(req?.method).toBe("POST")
     expect(req?.headers.get("cookie")).toBe("crowd.token_key=tempo-token")
     expect(await req?.json()).toEqual({
       qaid: "qa-123",
-      adoptedLines: "5",
+      adoptedLines: 5,
       adoptedContent: "",
-      deletedLines: "1",
+      deletedLines: 1,
     })
   })
 
@@ -113,7 +116,8 @@ describe("tempo metric", () => {
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -189,7 +193,8 @@ describe("tempo metric", () => {
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -220,7 +225,8 @@ describe("tempo metric", () => {
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
@@ -244,7 +250,8 @@ describe("tempo metric", () => {
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen-1",
       promptName: "build",
-      generatedLines: "8",
+      generatedLines: 8,
+      adoptedLines: 8,
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",

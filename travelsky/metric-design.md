@@ -5,13 +5,14 @@
 在大模型完整回答后，向公司后端添加一条生成记录，覆盖 desktop 与 cli；如果本轮回答最终造成文件变更，则直接把最终文件 diff 视为 agent 时代的采纳量，并通过生成记录返回的 `data` 作为 `qaid` 上报采纳量。
 
 - 当前生成记录接口：`POST /ai/data/api/record/saveGeneration`
-- 当前采纳量接口：`POST /record/addAdoption`
+- 当前采纳量接口：`POST /ai/data/api/record/addAdoption`
 - 主机：与模型列表请求同源（Tempo host）
 - Header：复用 Tempo 登录态 Cookie，`crowd.token_key=<token>`
 - 生成记录请求体：
   - `modelName`：AI 模型名称，使用本次最终 assistant 的 `modelID`
   - `promptName`：提示词模板名称，使用 assistant 所属 agent
-  - `generatedLines`：生成代码行数，优先来自本轮最终文件 diff 的新增行数，并合并工具 metadata 兜底
+  - `generatedLines`：生成代码行数，Integer，优先来自本轮最终文件 diff 的新增行数，并合并工具 metadata 兜底
+  - `adoptedLines`：采纳代码行数，Integer，当前与本轮最终文件 diff 的新增行数一致
   - `sessionId`：会话 ID
   - `codeLanguage`：代码语言，按本轮文件变更语言分布取主语言
   - `toolName`：插件名称，优先使用显式 `OPENCODE_TOOL_NAME`；Desktop sidecar 注入 `opencode-desktop`，其他本地 client 默认为 `opencode-cli`
@@ -22,7 +23,7 @@
   - `requestContent`：模型请求内容，当前可观测口径为本轮 user prompt 文本
   - `responseContent`：模型响应内容，当前可观测口径为同一 `parentID` 下 assistant 文本
 - 生成记录响应：`success/message/code/data/timestamp`，其中 `data` 为记录 id，后续采纳量接口的 `qaid` 使用该值。
-- 采纳量请求体：`qaid`、`adoptedLines`、`adoptedContent`、`deletedLines`。
+- 采纳量请求体：`qaid`、`adoptedLines`（Integer）、`adoptedContent`、`deletedLines`（Integer）。
 
 ## 范围与边界
 
@@ -35,13 +36,13 @@
 ## 统计口径
 
 - 上报时机：会话循环结束、最终 assistant 消息确定后，单次上报。
-- 生成代码行数（`generatedLines`）：
+- 生成代码行数（`generatedLines`）与生成记录采纳行数（`adoptedLines`）：
   - 基于同一轮回答产生的最终 `Snapshot.FileDiff` 聚合。
   - 即使用户打开的目录不是 git 仓库，也通过 opencode 内部 snapshot 对当前目录做前后对比，不能要求用户先 `git init` 才能统计。
   - 如果本轮存在已完成的 `edit/write/apply_patch` 工具变更，则将 snapshot diff 覆盖不到的工具文件合并进统计；这用于覆盖 `/projecta/b` 会话中修改 `~/xxxx/filec` 这类项目外文件。
   - 如果 snapshot diff 为空，则从工具 metadata 中的 `filediff/files` 兜底聚合，避免生成行数全部归零。
   - `bash` 直接写入项目外文件时，除非能被内部 snapshot 覆盖或后续工具 metadata 暴露，否则无法可靠还原行级 diff；后续如需强覆盖，应增加 shell 外部目录前后快照或约束模型使用 Write/Edit。
-  - 当前发送给后端的是新增行数 `line_changes.added`；删除行数不计入 `generatedLines`。
+  - 当前发送给后端的 `generatedLines` 与生成记录 `adoptedLines` 均为新增行数 `line_changes.added`。
 - 代码语言（`codeLanguage`）：
   - 复用文件变更聚合的语言分布，取出现次数最多的语言。
   - 没有可识别文件变更时返回 `Other`。
@@ -155,7 +156,7 @@
 ## 验证
 
 - `packages/opencode/test/session/metric.test.ts`
-  - 验证生成记录请求体、生成行数、语言、请求/响应内容、采纳量空内容、provider 过滤口径，以及显式 `OPENCODE_TOOL_NAME` 优先级。
+  - 验证生成记录请求体、生成行数、采纳行数、语言、请求/响应内容、采纳量空内容、provider 过滤口径，以及显式 `OPENCODE_TOOL_NAME` 优先级。
 - `packages/opencode/test/script/build-node.test.ts`
   - 验证 Desktop sidecar 使用的 node server build 保持 `OPENCODE_VERSION` 注入，以及 CLI build 保持 `OPENCODE_TOOL_NAME=opencode-cli` 注入。
 - `packages/opencode/test/server/tempo-metric.test.ts`

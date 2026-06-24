@@ -2,12 +2,13 @@ import { TempoApi } from "./tempo-api"
 import { TempoSession } from "./tempo-session"
 
 const generationPath = "/ai/data/api/record/saveGeneration"
-const adoptionPath = "/record/addAdoption"
+const adoptionPath = "/ai/data/api/record/addAdoption"
 
 type GenerationBody = {
   modelName: string
   promptName: string
-  generatedLines: string
+  generatedLines: number
+  adoptedLines: number
   sessionId: string
   codeLanguage: string
   toolName: string
@@ -21,9 +22,9 @@ type GenerationBody = {
 
 type AdoptionBody = {
   qaid: string
-  adoptedLines: string
+  adoptedLines: number
   adoptedContent: string
-  deletedLines: string
+  deletedLines: number
 }
 
 type MetricTrace = {

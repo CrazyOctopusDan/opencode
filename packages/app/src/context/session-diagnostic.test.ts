@@ -13,7 +13,7 @@ describe("session diagnostic", () => {
     expect(state.eligible).toBe(true)
     expect(state.reason).toBe("ready")
     expect(state.generation.path).toBe("/ai/data/api/record/saveGeneration")
-    expect(state.adoption.path).toBe("/record/addAdoption")
+    expect(state.adoption.path).toBe("/ai/data/api/record/addAdoption")
   })
 
   test("does not mark incomplete or non-TravelSky messages as metric eligible", () => {

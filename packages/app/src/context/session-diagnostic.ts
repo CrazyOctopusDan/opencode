@@ -86,7 +86,7 @@ const baseDir = (): Dir => ({
 const [data, setData] = createStore<Record<string, Dir>>({})
 const debugKey = "opencode:stream-debug"
 const generationPath = "/ai/data/api/record/saveGeneration"
-const adoptionPath = "/record/addAdoption"
+const adoptionPath = "/ai/data/api/record/addAdoption"
 
 const debugOn = () => {
   if (typeof localStorage === "undefined") return false

@@ -398,7 +398,8 @@ test("skips generation metric send when Tempo reports token expiration", async (
     const qaid = await TempoMetric.sendGeneration({
       modelName: "qwen",
       promptName: "build",
-      generatedLines: "0",
+      generatedLines: 0,
+      adoptedLines: 0,
       sessionId: "ses_1",
       codeLanguage: "Other",
       toolName: "opencode-cli",

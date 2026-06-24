@@ -30,7 +30,8 @@ type FileChangeV1 = {
 type Body = {
   modelName: string
   promptName: string
-  generatedLines: string
+  generatedLines: number
+  adoptedLines: number
   sessionId: string
   codeLanguage: string
   toolName: "opencode-desktop" | "opencode-cli"
@@ -43,9 +44,9 @@ type Body = {
 }
 
 type AdoptionBody = {
-  adoptedLines: string
+  adoptedLines: number
   adoptedContent: string
-  deletedLines: string
+  deletedLines: number
 }
 
 function travel(input: string) {
@@ -316,7 +317,8 @@ export namespace SessionMetric {
     return {
       modelName: input.model,
       promptName: rows[0].info.agent,
-      generatedLines: String(changes.line_changes.added),
+      generatedLines: changes.line_changes.added,
+      adoptedLines: changes.line_changes.added,
       sessionId: rows[0].info.sessionID,
       codeLanguage: dominant(changes),
       toolName: toolName(),
@@ -339,9 +341,9 @@ export namespace SessionMetric {
     const changes = fileChange({ diffs: input.diffs, rows })
     if (changes.line_changes.total === 0) return
     return {
-      adoptedLines: String(changes.line_changes.added),
+      adoptedLines: changes.line_changes.added,
       adoptedContent: "",
-      deletedLines: String(changes.line_changes.deleted),
+      deletedLines: changes.line_changes.deleted,
     }
   }
 }
