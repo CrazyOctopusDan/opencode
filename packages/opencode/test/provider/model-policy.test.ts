@@ -30,13 +30,13 @@ async function reset() {
   TempoSession.remove("model-policy-token")
   TempoSession.remove("empty-policy-token")
   TempoSession.remove("expired-policy-token")
-  Flag.OPENCODE_LOCKED_MODEL_POLICY = undefined
-  globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
-  await ModelPolicy.snapshot(true, "missing-policy-token")
-  globalThis.fetch = original.fetch
+  TempoSession.remove("stale-policy-token")
   Flag.OPENCODE_TEMPO_BASE_URL = original.base
   Flag.OPENCODE_TEMPO_ENV = original.env
   Flag.OPENCODE_LOCKED_MODEL_POLICY = original.policy
+  globalThis.fetch = (async () => new Response(JSON.stringify({ success: true, data: [] }))) as unknown as typeof fetch
+  await ModelPolicy.snapshot(true)
+  globalThis.fetch = original.fetch
 }
 
 describe("model policy", () => {
@@ -130,6 +130,17 @@ describe("model policy", () => {
     expect(policy.locked).toBeTrue()
     expect(policy.expired).toBeTrue()
     expect(policy.expiredMessage).toBe("token校验失败，失败原因：登录已过期")
+    expect(policy.list).toEqual([])
+  })
+
+  test("marks persisted local tokens with missing Tempo auth as recoverable expiration", async () => {
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+
+    const policy = await ModelPolicy.snapshot(true, "stale-policy-token")
+    expect(policy.enabled).toBeFalse()
+    expect(policy.locked).toBeTrue()
+    expect(policy.expired).toBeTrue()
+    expect(policy.expiredMessage).toContain("Tempo auth missing")
     expect(policy.list).toEqual([])
   })
 

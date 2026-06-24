@@ -11,6 +11,7 @@ import { InstanceHttpApi } from "../api"
 import { ModelPolicy } from "@/provider/model-policy"
 import { ProviderAuthApiError } from "../groups/provider"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { TempoMetric } from "@/server/tempo-metric"
 
 function tokenFromAuthorization(header: string | undefined) {
   if (!header?.startsWith("Bearer ")) return
@@ -64,18 +65,19 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         : policy.enabled
           ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list))
           : Object.assign(mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)), connected)
+      const metricSummary = TempoMetric.summary()
+      const debugTempo =
+        policy.expired || metricSummary
+          ? {
+              auth_expired: policy.expired,
+              message: [policy.expiredMessage, metricSummary].filter((item): item is string => !!item).join(" | "),
+            }
+          : undefined
       return {
         all: Object.values(providers).map(Provider.toPublicInfo),
         default: Provider.defaultModelIDs(providers),
         connected: policy.expired ? [] : policy.enabled ? Object.keys(providers) : Object.keys(connected),
-        ...(policy.expired
-          ? {
-              debug_tempo: {
-                auth_expired: true,
-                message: policy.expiredMessage,
-              },
-            }
-          : {}),
+        ...(debugTempo ? { debug_tempo: debugTempo } : {}),
       }
     })
 

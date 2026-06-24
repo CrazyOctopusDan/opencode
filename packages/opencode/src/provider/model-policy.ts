@@ -136,6 +136,10 @@ async function fromTempo(localToken?: string) {
   return TempoApi.listModels(auth)
 }
 
+async function fromFallbackPolicy() {
+  return (await fromRemote()) ?? fromEnv()
+}
+
 function fromEnv() {
   const raw = Flag.OPENCODE_LOCKED_MODEL_POLICY
   if (!raw) return
@@ -154,12 +158,24 @@ export namespace ModelPolicy {
   export async function snapshot(force = false, localToken?: string) {
     if (!force && Date.now() < expiresAt) return cache
     const auth = TempoSession.get(localToken)
-    const locked = TempoApi.enabled() && !!auth?.token
+    const hasTempoAuth = !!auth?.token || !!auth?.cookie
+    const missingTempoAuth = TempoApi.enabled() && !!localToken && !hasTempoAuth
+    if (missingTempoAuth) {
+      const list = await fromFallbackPolicy()
+      if (list) {
+        cache = makeSnapshot(list, false)
+        expiresAt = Date.now() + refreshMs()
+        return cache
+      }
+      return makeExpiredSnapshot("Tempo auth missing for current local session; login recovery required", true)
+    }
+
+    const locked = TempoApi.enabled() && hasTempoAuth
     const tempo = await fromTempo(localToken)
     if (tempo?.status === "expired") {
       return makeExpiredSnapshot(tempo.message, locked)
     }
-    const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromRemote()) ?? fromEnv() ?? []
+    const list = (tempo?.status === "ok" ? tempo.providers : undefined) ?? (await fromFallbackPolicy()) ?? []
     cache = makeSnapshot(list, locked)
     expiresAt = Date.now() + refreshMs()
     return cache

@@ -10,6 +10,7 @@ import { httpApiLayer, request } from "./httpapi-layer"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { TempoSession } from "@/server/tempo-session"
 import { ModelPolicy } from "@/provider/model-policy"
+import { TempoMetric } from "@/server/tempo-metric"
 
 const original = {
   fetch: globalThis.fetch,
@@ -20,7 +21,8 @@ afterEach(async () => {
   globalThis.fetch = original.fetch
   Flag.OPENCODE_TEMPO_BASE_URL = original.tempoBase
   TempoSession.remove("desktop-token")
-  await ModelPolicy.snapshot(true, "missing-desktop-token")
+  TempoSession.remove("stale-desktop-token")
+  await ModelPolicy.snapshot(true)
 })
 
 const testStateLayer = Layer.effectDiscard(
@@ -446,6 +448,66 @@ describe("provider HttpApi", () => {
       expect(response.status).toBe(200)
       expect(providerByID(body, "all", "travelSky")).toBeDefined()
       expect(isRecord(body) && Array.isArray(body.connected) ? body.connected : []).toContain("travelSky")
+    }),
+    projectOptions,
+  )
+
+  it.instance(
+    "reports recoverable Tempo auth when local desktop token has no server session",
+    Effect.gen(function* () {
+      Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.test"
+
+      const directory = (yield* TestInstance).directory
+      const response = yield* request("/provider", {
+        headers: {
+          "x-opencode-directory": directory,
+          Authorization: "Bearer stale-desktop-token",
+        },
+      })
+      const body = yield* response.json
+
+      expect(response.status).toBe(200)
+      expect(isRecord(body) && Array.isArray(body.connected) ? body.connected : []).toEqual([])
+      expect(isRecord(body) && isRecord(body.debug_tempo) ? body.debug_tempo.auth_expired : undefined).toBe(true)
+      expect(isRecord(body) && isRecord(body.debug_tempo) ? body.debug_tempo.message : undefined).toContain(
+        "Tempo auth missing",
+      )
+    }),
+    projectOptions,
+  )
+
+  it.instance(
+    "includes latest Tempo metric debug summary in provider list",
+    Effect.gen(function* () {
+      yield* Effect.promise(() =>
+        TempoMetric.sendGeneration({
+          moduleName: "qwen-1",
+          promptName: "build",
+          generatedLines: "8",
+          sessionId: "ses_1",
+          codeLanguage: "TS",
+          toolName: "opencode-cli",
+          toolVersion: "local",
+          ideName: "OpenCode",
+          ideVersion: "local",
+          projectName: "opencode",
+          requestContent: "write code",
+          responseContent: "done",
+        }),
+      )
+
+      const directory = (yield* TestInstance).directory
+      const response = yield* request("/provider", {
+        headers: {
+          "x-opencode-directory": directory,
+        },
+      })
+      const body = yield* response.json
+
+      expect(response.status).toBe(200)
+      expect(isRecord(body) && isRecord(body.debug_tempo) ? body.debug_tempo.message : undefined).toContain(
+        "saveGeneration skipped",
+      )
     }),
     projectOptions,
   )

@@ -4,6 +4,23 @@ import { TempoMetric } from "../../src/server/tempo-metric"
 
 const originalFetch = globalThis.fetch
 
+function generationInput(): TempoMetric.GenerationInput {
+  return {
+    moduleName: "qwen-1",
+    promptName: "build",
+    generatedLines: "8",
+    sessionId: "ses_1",
+    codeLanguage: "TS",
+    toolName: "opencode-cli",
+    toolVersion: "local",
+    ideName: "OpenCode",
+    ideVersion: "local",
+    projectName: "opencode",
+    requestContent: "write code",
+    responseContent: "done",
+  }
+}
+
 describe("tempo metric", () => {
   afterEach(() => {
     TempoSession.remove("local")
@@ -109,6 +126,51 @@ describe("tempo metric", () => {
     })
     expect(qaid).toBeUndefined()
     expect(hit).toBeFalse()
+  })
+
+  test("records trace when generation skips before fetch", async () => {
+    let hit = false
+    globalThis.fetch = (async () => {
+      hit = true
+      return new Response("ok", { status: 200 })
+    }) as unknown as typeof fetch
+
+    const qaid = await TempoMetric.sendGeneration(generationInput())
+    const trace = TempoMetric.trace()
+
+    expect(qaid).toBeUndefined()
+    expect(hit).toBeFalse()
+    expect(trace?.endpoint).toBe("saveGeneration")
+    expect(trace?.status).toBe("skipped")
+    expect(trace?.reason).toBe("no-auth")
+    expect(trace?.sent).toBe(false)
+  })
+
+  test("records rejected generation response details for debugging", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          code: 401,
+          message: "token校验失败，失败原因：登录已过期",
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    TempoSession.set("local", { token: "expired-token" })
+
+    const qaid = await TempoMetric.sendGeneration(generationInput())
+    const trace = TempoMetric.trace()
+
+    expect(qaid).toBeUndefined()
+    expect(trace?.endpoint).toBe("saveGeneration")
+    expect(trace?.status).toBe("rejected")
+    expect(trace?.sent).toBe(true)
+    expect(trace?.http?.status).toBe(200)
+    expect(trace?.parsed?.success).toBe(false)
+    expect(trace?.parsed?.code).toBe(401)
+    expect(trace?.parsed?.message).toBe("token校验失败，失败原因：登录已过期")
+    expect(TempoMetric.summary()).toContain("saveGeneration rejected http=200 success=false code=401")
   })
 
   test("returns false when metric response reports token expiration", async () => {

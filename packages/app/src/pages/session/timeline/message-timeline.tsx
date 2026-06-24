@@ -60,6 +60,7 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLanguage } from "@/context/language"
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useServerSDK } from "@/context/server-sdk"
+import { useServerSync } from "@/context/server-sync"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { SessionDiagnostic } from "@/context/session-diagnostic"
@@ -78,6 +79,12 @@ const emptyParts: PartType[] = []
 const emptyTools: ToolPart[] = []
 const emptyAssistantMessages: AssistantMessage[] = []
 const idle = { type: "idle" as const }
+
+type MetricServerDebug = {
+  debug_tempo?: {
+    message?: string
+  }
+}
 
 type FramedTimelineRow = Exclude<TimelineRow.TimelineRow, { _tag: "TurnGap" }>
 type TimelineRowByTag<T extends TimelineRow.TimelineRow["_tag"]> = Extract<TimelineRow.TimelineRow, { _tag: T }>
@@ -258,6 +265,7 @@ export function MessageTimeline(props: {
 
   const navigate = useNavigate()
   const serverSDK = useServerSDK()
+  const serverSync = useServerSync()
   const sdk = useSDK()
   const sync = useSync()
   const settings = useSettings()
@@ -299,6 +307,41 @@ export function MessageTimeline(props: {
     if (reason === "missing-assistant") return language.t("session.metricDiagnostic.reason.missingAssistant")
     if (reason === "not-finished") return language.t("session.metricDiagnostic.reason.notFinished")
     return language.t("session.metricDiagnostic.reason.provider")
+  })
+  const [metricServerDebug, setMetricServerDebug] = createSignal<{
+    messageID?: string
+    loading?: boolean
+    summary?: string
+  }>()
+  let metricDebugTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => {
+    if (metricDebugTimer !== undefined) clearTimeout(metricDebugTimer)
+  })
+  createEffect(() => {
+    const metric = metricDiagnostic()
+    if (!settings.general.showMetricDiagnostic()) return
+    if (!metric.eligible || metric.messageID === "n/a") return
+    if (metricServerDebug()?.messageID === metric.messageID) return
+    if (metricDebugTimer !== undefined) clearTimeout(metricDebugTimer)
+    setMetricServerDebug({ messageID: metric.messageID, loading: true })
+    metricDebugTimer = setTimeout(() => {
+      metricDebugTimer = undefined
+      void sdk()
+        .client.provider.list()
+        .then((response) => {
+          const data = response.data as MetricServerDebug | undefined
+          setMetricServerDebug({
+            messageID: metric.messageID,
+            summary: data?.debug_tempo?.message ?? "n/a",
+          })
+        })
+        .catch((err) => {
+          setMetricServerDebug({
+            messageID: metric.messageID,
+            summary: err instanceof Error ? err.message : String(err),
+          })
+        })
+    }, 1_800)
   })
   const tint = createMemo(() => messageAgentColor(sessionMessages(), sync().data.agent))
 
@@ -1284,6 +1327,12 @@ export function MessageTimeline(props: {
             <div>provider={metricDiagnostic().providerID}</div>
             <div>model={metricDiagnostic().modelID}</div>
             <div>message={metricDiagnostic().messageID}</div>
+            <div class="pt-1 text-text-strong">server trace</div>
+            <div class="break-all">
+              {metricServerDebug()?.loading
+                ? "loading"
+                : (metricServerDebug()?.summary ?? (serverSync().data.provider as MetricServerDebug).debug_tempo?.message ?? "n/a")}
+            </div>
             <div class="pt-1 text-text-strong">interfaces</div>
             <div>saveGeneration {metricDiagnostic().generation.path}</div>
             <div>send/return={language.t("session.metricDiagnostic.serverOnly")}</div>
