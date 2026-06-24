@@ -33,6 +33,7 @@ export interface Settings {
     editToolPartsExpanded: boolean
     showSessionProgressBar: boolean
     showCustomAgents: boolean
+    showMetricDiagnostic: boolean
     newLayoutDesigns?: boolean
   }
   appearance: {
@@ -118,6 +119,7 @@ const defaultSettings: Settings = {
     editToolPartsExpanded: false,
     showSessionProgressBar: true,
     showCustomAgents: false,
+    showMetricDiagnostic: false,
   },
   appearance: {
     fontSize: 14,
@@ -159,6 +161,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const showCustomAgents = withFallback(
       () => store.general?.showCustomAgents,
       defaultSettings.general.showCustomAgents,
+    )
+    const showMetricDiagnostic = withFallback(
+      () => store.general?.showMetricDiagnostic,
+      defaultSettings.general.showMetricDiagnostic,
     )
     const newLayoutDesigns = withFallback(() => store.general?.newLayoutDesigns, newLayoutDesignsDefault)
     const visible = (preference: () => boolean) => createMemo(() => !newLayoutDesigns() || preference())
@@ -247,6 +253,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         showCustomAgents,
         setShowCustomAgents(value: boolean) {
           setStore("general", "showCustomAgents", value)
+        },
+        showMetricDiagnostic,
+        setShowMetricDiagnostic(value: boolean) {
+          setStore("general", "showMetricDiagnostic", value)
         },
         newLayoutDesigns,
         setNewLayoutDesigns(value: boolean) {

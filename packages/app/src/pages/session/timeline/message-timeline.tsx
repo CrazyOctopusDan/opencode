@@ -62,6 +62,7 @@ import { useSessionKey } from "@/pages/session/session-layout"
 import { useServerSDK } from "@/context/server-sdk"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
+import { SessionDiagnostic } from "@/context/session-diagnostic"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
@@ -278,6 +279,27 @@ export function MessageTimeline(props: {
   })
   const working = createMemo(() => sessionStatus().type !== "idle")
   const sessionMessages = createMemo(() => (sessionID() ? (sync().data.message[sessionID()!] ?? []) : []))
+  const latestAssistantMessage = createMemo(() =>
+    sessionMessages()
+      .filter((message): message is AssistantMessage => message.role === "assistant" && message.summary !== true)
+      .at(-1),
+  )
+  const metricDiagnostic = createMemo(() => {
+    const message = latestAssistantMessage()
+    return SessionDiagnostic.metric({
+      finish: message?.finish,
+      providerID: message?.providerID,
+      messageID: message?.id,
+      modelID: message?.modelID,
+    })
+  })
+  const metricReasonLabel = createMemo(() => {
+    const reason = metricDiagnostic().reason
+    if (reason === "ready") return language.t("session.metricDiagnostic.reason.ready")
+    if (reason === "missing-assistant") return language.t("session.metricDiagnostic.reason.missingAssistant")
+    if (reason === "not-finished") return language.t("session.metricDiagnostic.reason.notFinished")
+    return language.t("session.metricDiagnostic.reason.provider")
+  })
   const tint = createMemo(() => messageAgentColor(sessionMessages(), sync().data.agent))
 
   const [timeoutDone, setTimeoutDone] = createSignal(true)
@@ -1237,6 +1259,39 @@ export function MessageTimeline(props: {
 
   return (
     <div class="relative w-full h-full min-w-0">
+      <Show when={settings.general.showMetricDiagnostic()}>
+        <div class="pointer-events-none absolute right-3 top-3 z-[65] max-w-[calc(100vw-1.5rem)]">
+          <div
+            data-component="metric-diagnostic"
+            class="pointer-events-auto w-[340px] max-w-full rounded-[8px] border border-border-weak-base bg-background-base/95 px-3 py-2 text-[11px] leading-5 font-mono text-text-weak shadow-[var(--shadow-lg-border-base)] backdrop-blur-sm"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-text-strong">{language.t("session.metricDiagnostic.title")}</div>
+              <div
+                classList={{
+                  "rounded px-1.5 py-0.5 text-[10px] leading-none": true,
+                  "bg-surface-success-base text-text-on-success-base": metricDiagnostic().eligible,
+                  "bg-surface-warning-base text-text-on-warning-base": !metricDiagnostic().eligible,
+                }}
+              >
+                {metricDiagnostic().eligible
+                  ? language.t("session.metricDiagnostic.eligible")
+                  : language.t("session.metricDiagnostic.blocked")}
+              </div>
+            </div>
+            <div>reason={metricReasonLabel()}</div>
+            <div>finish={metricDiagnostic().finish}</div>
+            <div>provider={metricDiagnostic().providerID}</div>
+            <div>model={metricDiagnostic().modelID}</div>
+            <div>message={metricDiagnostic().messageID}</div>
+            <div class="pt-1 text-text-strong">interfaces</div>
+            <div>saveGeneration {metricDiagnostic().generation.path}</div>
+            <div>send/return={language.t("session.metricDiagnostic.serverOnly")}</div>
+            <div>addAdoption {metricDiagnostic().adoption.path}</div>
+            <div>send/return={language.t("session.metricDiagnostic.serverOnly")}</div>
+          </div>
+        </div>
+      </Show>
       <div
         class="absolute left-1/2 -translate-x-1/2 bottom-6 z-[60] pointer-events-none transition-all duration-200 ease-out"
         classList={{

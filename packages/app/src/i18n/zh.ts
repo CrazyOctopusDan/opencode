@@ -115,6 +115,15 @@ export const dict = {
   "command.session.unshare": "取消分享会话",
   "command.session.unshare.description": "停止分享此会话",
 
+  "session.metricDiagnostic.title": "统计诊断",
+  "session.metricDiagnostic.eligible": "可触发",
+  "session.metricDiagnostic.blocked": "未满足",
+  "session.metricDiagnostic.serverOnly": "服务端可见",
+  "session.metricDiagnostic.reason.ready": "finish/provider 已满足",
+  "session.metricDiagnostic.reason.missingAssistant": "无 assistant 消息",
+  "session.metricDiagnostic.reason.notFinished": "assistant 尚未结束",
+  "session.metricDiagnostic.reason.provider": "provider 不是 travelsky",
+
   "palette.search.placeholder": "搜索文件、命令和会话",
   "palette.empty": "未找到结果",
   "palette.group.commands": "命令",
@@ -666,6 +675,9 @@ export const dict = {
   "settings.general.row.editToolPartsExpanded.description": "默认在时间线中展开 edit、write 和 patch 工具部分",
   "settings.general.row.showSessionProgressBar.title": "显示会话进度条",
   "settings.general.row.showSessionProgressBar.description": "当智能体正在工作时，在会话顶部显示动画进度条",
+  "settings.general.row.showMetricDiagnostic.title": "统计诊断面板",
+  "settings.general.row.showMetricDiagnostic.description":
+    "在会话中显示客户端可见的 finish 和 provider 状态，用于排查 TravelSky 统计触发",
   "settings.general.row.wayland.title": "使用原生 Wayland",
   "settings.general.row.wayland.description": "在 Wayland 上禁用 X11 回退。需要重启。",
   "settings.general.row.wayland.tooltip": "在混合刷新率显示器的 Linux 系统上，原生 Wayland 可能更稳定。",

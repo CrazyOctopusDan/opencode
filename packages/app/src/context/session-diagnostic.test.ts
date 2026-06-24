@@ -3,6 +3,25 @@ import type { Event } from "@opencode-ai/sdk/v2/client"
 import { SessionDiagnostic } from "./session-diagnostic"
 
 describe("session diagnostic", () => {
+  test("describes TravelSky metric trigger eligibility from the visible assistant finish", () => {
+    const state = SessionDiagnostic.metric({
+      finish: "stop",
+      providerID: "travelsky",
+      messageID: "msg_1",
+      modelID: "qwen",
+    })
+    expect(state.eligible).toBe(true)
+    expect(state.reason).toBe("ready")
+    expect(state.generation.path).toBe("/ai/data/api/record/saveGeneration")
+    expect(state.adoption.path).toBe("/record/addAdoption")
+  })
+
+  test("does not mark incomplete or non-TravelSky messages as metric eligible", () => {
+    expect(SessionDiagnostic.metric({ finish: "tool-calls", providerID: "travelsky" }).eligible).toBe(false)
+    expect(SessionDiagnostic.metric({ finish: "unknown", providerID: "travelsky" }).eligible).toBe(false)
+    expect(SessionDiagnostic.metric({ finish: "stop", providerID: "anthropic" }).eligible).toBe(false)
+  })
+
   test("tracks event count and coalesce", () => {
     const dir = "/tmp/a"
     SessionDiagnostic.event({

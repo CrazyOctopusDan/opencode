@@ -788,6 +788,15 @@ export const dict = {
   "debugBar.mem.tipUnavailable": "Used JS heap vs heap limit. Chromium only.",
   "debugBar.mem.tip": "Used JS heap vs heap limit. {{used}} of {{limit}}.",
 
+  "session.metricDiagnostic.title": "Metric diag",
+  "session.metricDiagnostic.eligible": "eligible",
+  "session.metricDiagnostic.blocked": "blocked",
+  "session.metricDiagnostic.serverOnly": "server-only",
+  "session.metricDiagnostic.reason.ready": "finish/provider ready",
+  "session.metricDiagnostic.reason.missingAssistant": "no assistant message",
+  "session.metricDiagnostic.reason.notFinished": "assistant not finished",
+  "session.metricDiagnostic.reason.provider": "provider is not travelsky",
+
   "app.name.desktop": "OpenCode Desktop",
 
   "settings.section.desktop": "Desktop",
@@ -841,6 +850,9 @@ export const dict = {
   "settings.general.row.showStatus.description": "Show the server status button in the title bar",
   "settings.general.row.showCustomAgents.title": "Custom agents",
   "settings.general.row.showCustomAgents.description": "Show the agent picker in the composer",
+  "settings.general.row.showMetricDiagnostic.title": "Metric diagnostic panel",
+  "settings.general.row.showMetricDiagnostic.description":
+    "Show client-visible finish and provider state for TravelSky metric debugging",
   "settings.general.row.reasoningSummaries.title": "Show reasoning summaries",
   "settings.general.row.reasoningSummaries.description": "Display model reasoning summaries in the timeline",
   "settings.general.row.shellToolPartsExpanded.title": "Expand shell tool parts",

@@ -401,6 +401,18 @@ export const SettingsGeneralV2: Component = () => {
             />
           </div>
         </SettingsRowV2>
+
+        <SettingsRowV2
+          title={language.t("settings.general.row.showMetricDiagnostic.title")}
+          description={language.t("settings.general.row.showMetricDiagnostic.description")}
+        >
+          <div data-action="settings-show-metric-diagnostic">
+            <Switch
+              checked={settings.general.showMetricDiagnostic()}
+              onChange={(checked) => settings.general.setShowMetricDiagnostic(checked)}
+            />
+          </div>
+        </SettingsRowV2>
       </SettingsListV2>
     </div>
   )

@@ -45,6 +45,20 @@ type Dir = {
   session: Record<string, Row>
 }
 
+type MetricReason = "ready" | "missing-assistant" | "not-finished" | "provider"
+
+type MetricInput = {
+  finish?: string
+  providerID?: string
+  messageID?: string
+  modelID?: string
+}
+
+type MetricEndpoint = {
+  path: string
+  visible: "client" | "server-only"
+}
+
 const baseSync = (): Sync => ({
   before: 0,
   after: 0,
@@ -71,6 +85,8 @@ const baseDir = (): Dir => ({
 
 const [data, setData] = createStore<Record<string, Dir>>({})
 const debugKey = "opencode:stream-debug"
+const generationPath = "/ai/data/api/record/saveGeneration"
+const adoptionPath = "/record/addAdoption"
 
 const debugOn = () => {
   if (typeof localStorage === "undefined") return false
@@ -103,6 +119,36 @@ const ensureRow = (dir: string, sessionID: string) => {
 }
 
 const rec = (value: unknown) => (value && typeof value === "object" ? (value as Record<string, unknown>) : undefined)
+
+const finalFinish = (finish: string | undefined) => !!finish && !["tool-calls", "unknown"].includes(finish)
+
+const travelsky = (providerID: string | undefined) => providerID?.trim().toLowerCase() === "travelsky"
+
+const metric = (input: MetricInput) => {
+  const reason: MetricReason = !input.messageID
+    ? "missing-assistant"
+    : !finalFinish(input.finish)
+      ? "not-finished"
+      : !travelsky(input.providerID)
+        ? "provider"
+        : "ready"
+  return {
+    eligible: reason === "ready",
+    reason,
+    finish: input.finish ?? "n/a",
+    providerID: input.providerID ?? "n/a",
+    messageID: input.messageID ?? "n/a",
+    modelID: input.modelID ?? "n/a",
+    generation: {
+      path: generationPath,
+      visible: "server-only",
+    } satisfies MetricEndpoint,
+    adoption: {
+      path: adoptionPath,
+      visible: "server-only",
+    } satisfies MetricEndpoint,
+  }
+}
 
 const pick = (evt: Event): Omit<Last, "at" | "type"> => {
   const props = rec(evt.properties)
@@ -150,6 +196,7 @@ export const SessionDiagnostic = {
   debugOn,
   setDebug,
   debugOut,
+  metric,
   trace(input: {
     dir: string
     kind: string
