@@ -32,8 +32,8 @@
 
 - metric 仍只对 `providerID` 大小写不敏感匹配 `travelsky` 时构建上报体。
 - 生成记录接口必须是 `POST /ai/data/api/record/saveGeneration`，Header 必须携带 `Cookie: crowd.token_key=<token>`。
-- 生成记录 body 必须包含：`moduleName`、`promptName`、`generatedLines`、`sessionId`、`codeLanguage`、`toolName`、`toolVersion`、`ideName`、`ideVersion`、`projectName`、`requestContent`、`responseContent`。
-- `moduleName` 必须使用最终 assistant 的 `modelID`；`promptName` 必须使用 assistant 所属 agent。
+- 生成记录 body 必须包含：`modelName`、`promptName`、`generatedLines`、`sessionId`、`codeLanguage`、`toolName`、`toolVersion`、`ideName`、`ideVersion`、`projectName`、`requestContent`、`responseContent`。
+- `modelName` 必须使用最终 assistant 的 `modelID`；`promptName` 必须使用 assistant 所属 agent。
 - `toolName` 必须优先使用显式 `OPENCODE_TOOL_NAME`；仅接受 `opencode-desktop` 或 `opencode-cli`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
 - CLI 二进制 build 必须显式注入 `OPENCODE_TOOL_NAME=opencode-cli`，不能只依赖默认 fallback。
 - Desktop 普通 sidecar 与 WSL sidecar 必须显式注入 `OPENCODE_TOOL_NAME=opencode-desktop`，不能依赖本地 server 启动方式或打包 artifact 名称推断。
@@ -49,7 +49,7 @@
 - 非 git 目录不能导致 `Snapshot.track()` 禁用；内部 snapshot 必须限定在当前打开目录，不能使用 `/` 作为非 git 项目的对比根。
 - 文件改动聚合必须优先来自本轮完成态 `Snapshot.FileDiff`；同时必须合并当前回答已完成 `edit/write/apply_patch` 工具 metadata 中 snapshot 未覆盖的 `filediff/files`，尤其是会话目录外的文件。
 - 当 diff 数组为空时，必须能从工具 metadata 中的 `filediff/files` 兜底聚合，不能让有编辑事件的会话全部归零。
-- 当前生成记录接口不能继续发送第一版 `text/modelName/other` body；第一版 `other.v1/v2` 只保留在设计文档中作为历史口径和后续扩展参考。
+- 当前生成记录接口不能继续发送第一版 `text/modelName/other` body；当前只保留平铺 `modelName` 字段，第一版 `other.v1/v2` 只保留在设计文档中作为历史口径和后续扩展参考。
 
 ## 冲突处理规则
 

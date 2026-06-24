@@ -396,7 +396,7 @@ test("skips generation metric send when Tempo reports token expiration", async (
 
   try {
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen",
+      modelName: "qwen",
       promptName: "build",
       generatedLines: "0",
       sessionId: "ses_1",

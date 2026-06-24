@@ -9,7 +9,7 @@
 - 主机：与模型列表请求同源（Tempo host）
 - Header：复用 Tempo 登录态 Cookie，`crowd.token_key=<token>`
 - 生成记录请求体：
-  - `moduleName`：AI 模型名称，使用本次最终 assistant 的 `modelID`
+  - `modelName`：AI 模型名称，使用本次最终 assistant 的 `modelID`
   - `promptName`：提示词模板名称，使用 assistant 所属 agent
   - `generatedLines`：生成代码行数，优先来自本轮最终文件 diff 的新增行数，并合并工具 metadata 兜底
   - `sessionId`：会话 ID
@@ -74,7 +74,7 @@
 
 - `text`：回答字数，同一轮 user prompt（同 `parentID`）下所有 assistant 文本片段总 Unicode 字符数。
 - `other`：v1 + v2 统计矩阵 JSON。
-- `modelName`：本次使用模型。
+- `modelName`：本次使用模型。注意这是第一版旧请求体中的字段；当前生成记录接口也使用平铺 `modelName`，但不再发送 `text/other` 旧矩阵。
 
 第一版 v1 文件变更矩阵（写入 `other.v1`）：
 

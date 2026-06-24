@@ -6,7 +6,7 @@ const originalFetch = globalThis.fetch
 
 function generationInput(): TempoMetric.GenerationInput {
   return {
-    moduleName: "qwen-1",
+    modelName: "qwen-1",
     promptName: "build",
     generatedLines: "8",
     sessionId: "ses_1",
@@ -38,7 +38,7 @@ describe("tempo metric", () => {
     TempoSession.set("local", { token: "tempo-token" })
 
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",
@@ -58,7 +58,7 @@ describe("tempo metric", () => {
     expect(req?.method).toBe("POST")
     expect(req?.headers.get("cookie")).toBe("crowd.token_key=tempo-token")
     expect(await req?.json()).toEqual({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",
@@ -111,7 +111,7 @@ describe("tempo metric", () => {
     }) as unknown as typeof fetch
 
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",
@@ -187,7 +187,7 @@ describe("tempo metric", () => {
     TempoSession.set("local", { token: "expired-token" })
 
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",
@@ -218,7 +218,7 @@ describe("tempo metric", () => {
     TempoSession.set("local", { token: "tempo-token" })
 
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",
@@ -242,7 +242,7 @@ describe("tempo metric", () => {
     TempoSession.set("local", { token: "tempo-token" })
 
     const qaid = await TempoMetric.sendGeneration({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "8",
       sessionId: "ses_1",

@@ -24,7 +24,7 @@
 
 ### 统计口径
 
-- **D-04:** `moduleName` 使用最终 assistant 的 `modelID`；`promptName` 使用 assistant 所属 agent。
+- **D-04:** `modelName` 使用最终 assistant 的 `modelID`；`promptName` 使用 assistant 所属 agent。
 - **D-05:** `requestContent` 使用本轮父 user message 文本；`responseContent` 使用同一 `parentID` 下 assistant 文本。
 - **D-06:** `generatedLines` 使用第一版文件变更聚合得到的新增行数；`codeLanguage` 使用该聚合中的主语言。
 - **D-13:** `toolName` 优先使用显式 `OPENCODE_TOOL_NAME`；CLI build 必须注入 `opencode-cli`，Desktop sidecar/WSL sidecar 必须注入 `opencode-desktop`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
@@ -50,7 +50,7 @@
 ## Specific Ideas
 
 - 优先“独立文件 + 最小接入点”，减少后续与上游合并冲突。
-- 第一版 `text/modelName/other.v1/v2` 保留在实现文档中，不再作为当前请求体发送。
+- 第一版 `text/modelName/other.v1/v2` 保留在实现文档中，不再作为当前请求体发送；当前生成记录接口只保留平铺 `modelName` 字段。
 - 当前接口字段直接平铺为生成记录 body，避免后端继续解析旧矩阵。
 - 版本不在接口构建处硬编码；发布时只维护 `packages/opencode/package.json`，workflow 和 build 脚本负责把版本注入运行时代码。
 

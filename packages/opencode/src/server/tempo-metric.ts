@@ -5,7 +5,7 @@ const generationPath = "/ai/data/api/record/saveGeneration"
 const adoptionPath = "/record/addAdoption"
 
 type GenerationBody = {
-  moduleName: string
+  modelName: string
   promptName: string
   generatedLines: string
   sessionId: string

@@ -200,7 +200,7 @@ describe("session metric", () => {
     })
 
     expect(body).toEqual({
-      moduleName: "qwen-1",
+      modelName: "qwen-1",
       promptName: "build",
       generatedLines: "2",
       sessionId: "ses_1",
@@ -326,7 +326,7 @@ describe("session metric", () => {
     })
 
     expect(body).toBeDefined()
-    expect(body?.moduleName).toBe("qwen-1")
+    expect(body?.modelName).toBe("qwen-1")
     expect(body?.promptName).toBe("build")
     expect(body?.requestContent).toBe("first")
     expect(body?.responseContent).toBe("helloworld")

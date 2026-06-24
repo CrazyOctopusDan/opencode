@@ -481,7 +481,7 @@ describe("provider HttpApi", () => {
     Effect.gen(function* () {
       yield* Effect.promise(() =>
         TempoMetric.sendGeneration({
-          moduleName: "qwen-1",
+          modelName: "qwen-1",
           promptName: "build",
           generatedLines: "8",
           sessionId: "ses_1",

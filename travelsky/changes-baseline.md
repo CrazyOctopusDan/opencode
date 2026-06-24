@@ -83,7 +83,7 @@
 - CLI 登录后即使 Provider 服务已经在登录前初始化，prompt 执行前也必须能用当前 Tempo session 刷新 TravelSky 模型策略，不能因为内部 Provider 状态过旧而报 `Model not Found: travelSky/<model>`。
 - Desktop 模型弹窗依赖 `/provider.connected` 过滤可选模型；`llm/list` 返回 TravelSky 模型时必须同步把 `travelSky` 放入 `connected`，不能只出现在 `all` 中。
 - 若上游调整 TUI 命令注册：优先保留 `/connect` 与 `/models` 的 TravelSky 固定入口行为。
-- 若上游新增 metric 统计：优先保留“runLoop 完成态单次添加生成记录 + `/ai/data/api/record/saveGeneration` 平铺字段 + 生成记录 qaid 成功返回后按最终文件 diff 调 `/record/addAdoption`”的语义。
+- 若上游新增 metric 统计：优先保留“runLoop 完成态单次添加生成记录 + `/ai/data/api/record/saveGeneration` 平铺字段（含 `modelName`）+ 生成记录 qaid 成功返回后按最终文件 diff 调 `/record/addAdoption`”的语义。
 - agent 时代采纳口径是最终文件 diff：`adoptedLines` 取新增行，`deletedLines` 取删除行，`adoptedContent` 固定为空字符串。
 - 文件修改统计只用于聚合生成行数和语言，不上传 diff 原文；第一版 `other.v1/v2` 只保留在设计文档中作为历史口径，不再发送给当前生成记录接口。
 - 非 git 目录也必须能统计生成行数：内部 snapshot 对比根限定为当前目录，不能因为没有 `.git` 返回全 0，也不能把对比范围扩大到 `/`。

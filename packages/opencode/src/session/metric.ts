@@ -28,7 +28,7 @@ type FileChangeV1 = {
 }
 
 type Body = {
-  moduleName: string
+  modelName: string
   promptName: string
   generatedLines: string
   sessionId: string
@@ -314,7 +314,7 @@ export namespace SessionMetric {
     })
     const changes = fileChange({ diffs: input.diffs, rows })
     return {
-      moduleName: input.model,
+      modelName: input.model,
       promptName: rows[0].info.agent,
       generatedLines: String(changes.line_changes.added),
       sessionId: rows[0].info.sessionID,
