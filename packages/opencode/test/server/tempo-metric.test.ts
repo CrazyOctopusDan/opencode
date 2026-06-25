@@ -76,6 +76,36 @@ describe("tempo metric", () => {
     })
   })
 
+  test("uses a long enough timeout for intranet metric writes", async () => {
+    const timeout = Object.getOwnPropertyDescriptor(AbortSignal, "timeout")
+    const signal = new AbortController().signal
+    let timeoutMs = 0
+    let req: Request | undefined
+    Object.defineProperty(AbortSignal, "timeout", {
+      configurable: true,
+      value(ms: number) {
+        timeoutMs = ms
+        return signal
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      req = new Request(input, init)
+      return new Response(JSON.stringify({ success: true, data: "qa-123" }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    try {
+      TempoSession.set("local", { token: "tempo-token" })
+
+      await TempoMetric.sendGeneration(generationInput())
+
+      expect(timeoutMs).toBe(10_000)
+      expect(req?.signal).toBe(signal)
+    } finally {
+      if (timeout) Object.defineProperty(AbortSignal, "timeout", timeout)
+      if (!timeout) Reflect.deleteProperty(AbortSignal, "timeout")
+    }
+  })
+
   test("posts adoption record with generation qaid", async () => {
     let req: Request | undefined
 

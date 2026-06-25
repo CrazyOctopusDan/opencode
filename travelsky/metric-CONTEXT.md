@@ -37,7 +37,7 @@
 ### 稳定性策略
 
 - **D-07:** 无 Tempo 登录态（无 Cookie）直接跳过。
-- **D-08:** 上报失败/超时不阻断回答流程，超时上限 1.5s。
+- **D-08:** 上报失败/超时不阻断回答流程，超时上限 10s；显式 Tempo base 允许写到 host 根或 `/ai/data/api` 根，发送前必须归一，避免双 `/ai/data/api`。
 
 ### the agent's Discretion
 

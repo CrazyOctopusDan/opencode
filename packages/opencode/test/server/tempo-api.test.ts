@@ -1,7 +1,36 @@
 import { describe, expect, test } from "bun:test"
 import { TempoApi } from "../../src/server/tempo-api"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 describe("tempo api login", () => {
+  test("normalizes explicit api base before appending tempo paths", async () => {
+    const originalFetch = globalThis.fetch
+    const previousBase = Flag.OPENCODE_TEMPO_BASE_URL
+    Flag.OPENCODE_TEMPO_BASE_URL = "https://tempo.travelsky.com.cn/ai/data/api/"
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      expect(input.toString()).toBe("https://tempo.travelsky.com.cn/ai/data/api/auth/login")
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            token: "tempo-login-token",
+          },
+        }),
+      )
+    }) as typeof fetch
+
+    try {
+      const result = await TempoApi.login({
+        username: "dummy-user",
+        password: "dummy-password",
+      })
+      expect(result.token).toBe("tempo-login-token")
+    } finally {
+      globalThis.fetch = originalFetch
+      Flag.OPENCODE_TEMPO_BASE_URL = previousBase
+    }
+  })
+
   test("posts username with encrypted password to company login endpoint", async () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {

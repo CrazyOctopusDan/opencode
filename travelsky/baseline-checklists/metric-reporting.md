@@ -31,6 +31,7 @@
 ## 不变量
 
 - metric 仍只对 `providerID` 大小写不敏感匹配 `travelsky` 时构建上报体。
+- Tempo base 可以配置为 host 根或 `/ai/data/api` 根；发送前必须归一到 host 根，不能出现双 `/ai/data/api`。
 - 生成记录接口必须是 `POST /ai/data/api/record/saveGeneration`，Header 必须携带 `Cookie: crowd.token_key=<token>`。
 - 生成记录 body 必须包含：`modelName`、`promptName`、`generatedLines`、`adoptedLines`、`sessionId`、`codeLanguage`、`toolName`、`toolVersion`、`ideName`、`ideVersion`、`projectName`、`requestContent`、`responseContent`。
 - `modelName` 必须使用最终 assistant 的 `modelID`；`promptName` 必须使用 assistant 所属 agent。
@@ -61,6 +62,7 @@
 - 上游如果调整 `write` 工具 metadata，必须保留 `filediff.file/status/additions/deletions` 或提供等价字段，避免 `write` 创建/覆盖文件时生成行数无法统计。
 - 上游如果调整上报时机，必须保留每轮回答完成后单次生成记录上报；采纳量只能在生成记录返回 qaid 后基于同一轮最终 diff 上报，避免中间 step 重复上报。
 - 上游如果调整 Tempo metric 发送层，仍必须保持生成记录和采纳量请求失败、超时、token 失效不打扰用户对话。
+- 上游如果调整 Tempo base 配置读取，必须保留 `/ai/data/api` 后缀归一，避免部署环境把 API base 和接口路径重复拼接。
 - 上游如果调整 Desktop sidecar、WSL sidecar、CLI build 或 build-node 构建流程，必须重新确认 `OPENCODE_TOOL_NAME` 和 `OPENCODE_VERSION` 仍在生产包链路中可用。
 
 ## 验证方式

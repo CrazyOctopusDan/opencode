@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { OpencodeClient, ProviderListResponse } from "@opencode-ai/sdk/v2/client"
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
-import { listProvidersWithRecovery } from "./global-sync/bootstrap"
+import { invalidateProviderQueries, listProvidersWithRecovery } from "./global-sync/bootstrap"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
 import { normalizeProviderList } from "./global-sync/utils"
+import { QueryClient } from "@tanstack/solid-query"
+import { ServerScope } from "@/utils/server-scope"
 
 const providerList = (patch?: Record<string, unknown>) =>
   ({
@@ -144,6 +146,24 @@ describe("listProvidersWithRecovery", () => {
     )
 
     expect(result).toEqual(normalizeProviderList(providerList()))
+  })
+})
+
+describe("invalidateProviderQueries", () => {
+  test("invalidates global and directory provider queries for one server scope", async () => {
+    const queryClient = new QueryClient()
+    const scope = ServerScope.local
+    queryClient.setQueryData([scope, null, "providers"], "global-providers")
+    queryClient.setQueryData([scope, "/repo", "providers"], "directory-providers")
+    queryClient.setQueryData([scope, "/repo", "path"], "path")
+    queryClient.setQueryData(["remote", null, "providers"], "remote-providers")
+
+    await invalidateProviderQueries(queryClient, scope)
+
+    expect(queryClient.getQueryState([scope, null, "providers"])?.isInvalidated).toBeTrue()
+    expect(queryClient.getQueryState([scope, "/repo", "providers"])?.isInvalidated).toBeTrue()
+    expect(queryClient.getQueryState([scope, "/repo", "path"])?.isInvalidated).toBeFalse()
+    expect(queryClient.getQueryState(["remote", null, "providers"])?.isInvalidated).toBeFalse()
   })
 })
 

@@ -71,6 +71,12 @@ export function clearProviderRev(scope: ServerScope, directory: string) {
   providerRev.delete(ScopedKey.from(scope, directory))
 }
 
+export function invalidateProviderQueries(queryClient: QueryClient, scope: ServerScope) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey[0] === scope && query.queryKey[2] === "providers",
+  })
+}
+
 function runAll(list: Array<() => Promise<unknown>>) {
   return Promise.allSettled(list.map((item) => item()))
 }

@@ -3,6 +3,7 @@ import { TempoSession } from "./tempo-session"
 
 const generationPath = "/ai/data/api/record/saveGeneration"
 const adoptionPath = "/ai/data/api/record/addAdoption"
+const metricTimeoutMs = 10_000
 
 type GenerationBody = {
   modelName: string
@@ -158,7 +159,7 @@ export namespace TempoMetric {
       method: "POST",
       headers: head,
       body: JSON.stringify(input.body),
-      signal: AbortSignal.timeout(1_500),
+      signal: AbortSignal.timeout(metricTimeoutMs),
     })
       .then(async (res) => {
         const payload = await res.json().catch(() => undefined)

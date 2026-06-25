@@ -66,13 +66,17 @@ type TempoTrace = {
 
 let lastTrace: TempoTrace | undefined
 
+function normalizeBase(input: string) {
+  return input.replace(/\/+$/, "").replace(/\/ai\/data\/api$/i, "")
+}
+
 function base() {
-  if (Flag.OPENCODE_TEMPO_BASE_URL) return Flag.OPENCODE_TEMPO_BASE_URL.replace(/\/+$/, "")
+  if (Flag.OPENCODE_TEMPO_BASE_URL) return normalizeBase(Flag.OPENCODE_TEMPO_BASE_URL)
   const env = (Flag.OPENCODE_TEMPO_ENV ?? "prod").toLowerCase()
   if (env === "dev" || env === "test") {
-    return (Flag.OPENCODE_TEMPO_DEV_BASE_URL ?? defaultDevBaseURL).replace(/\/+$/, "")
+    return normalizeBase(Flag.OPENCODE_TEMPO_DEV_BASE_URL ?? defaultDevBaseURL)
   }
-  return (Flag.OPENCODE_TEMPO_PROD_BASE_URL ?? defaultProdBaseURL).replace(/\/+$/, "")
+  return normalizeBase(Flag.OPENCODE_TEMPO_PROD_BASE_URL ?? defaultProdBaseURL)
 }
 
 function mode() {

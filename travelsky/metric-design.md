@@ -29,7 +29,7 @@
 
 - 仅对 TravelSky provider 上报（`providerID` 大小写不敏感匹配 `travelsky`）。
 - 上报失败不影响主流程回答（容错降级）。
-- 请求超时控制为 1.5s，避免影响交互时延。
+- 请求超时控制为 10s，避免内网写库慢时被本地提前 abort；上报失败仍不影响主流程回答。
 - 当前在完成态自动添加生成记录；生成记录成功返回 qaid 后，如果最终文件 diff 有新增或删除行，则立即自动上报采纳量。
 - `adoptedContent` 固定传空字符串，避免上传完整代码内容；当前没有采纳内容统计需求。
 
@@ -151,7 +151,7 @@
 - 轻量修改 `packages/opencode/src/snapshot/index.ts`
   - 非 git 目录使用当前目录作为内部 snapshot worktree，保证 shell/bash 创建文件也能进入最终 diff。
 - 轻量修改 `packages/opencode/src/server/tempo-api.ts`
-  - 暴露 `baseURL()`，避免重复维护主机解析逻辑。
+  - 暴露 `baseURL()`，避免重复维护主机解析逻辑；显式 Tempo base 如果配置到 `/ai/data/api`，会先归一到 host 根再拼接接口路径，避免双 `/ai/data/api`。
 
 ## 验证
 

@@ -40,7 +40,7 @@
 - `packages/app/src/context/auth.tsx`：登录支持 `remember`，并提供带竞态保护的 `recover()`。
 - `packages/app/src/utils/server.ts`：提供 `createAuthRecoveringFetch()`，SDK 请求先注入最新 Bearer，遇到本地 401 后 recover 并用新 token 重试一次。
 - `packages/app/src/context/global-sdk.tsx`：全局 SDK、目录 client 和事件流 SDK 必须统一接入 auth recovering fetch，覆盖发送消息、event stream、provider/file/workspace 等 SDK 请求。
-- `packages/app/src/context/global-sync/bootstrap.ts`、`packages/app/src/context/global-sync.tsx`、`packages/app/src/context/global-sync/child-store.ts`：全局和目录 provider 查询接入恢复、重试和 query cache 更新。
+- `packages/app/src/context/global-sync/bootstrap.ts`、`packages/app/src/context/server-sync.tsx`、`packages/app/src/context/global-sync/child-store.ts`：全局和目录 provider 查询接入恢复、重试和 query cache 更新。
 - `packages/app/src/pages/login.tsx`：登录页“记住我”和已记住凭据回填。
 - `packages/app/src/components/dialog-select-model.tsx`、`packages/app/src/components/dialog-select-model-unpaid.tsx`：模型列表遇到 expired 或未授权错误时走目录 provider query 恢复、重试、刷新 cache 或回登录页。
 - `packages/sdk/openapi.json`、`packages/sdk/js/src/v2/gen/types.gen.ts`：provider schema/SDK 类型必须包含 `debug_tempo`。
@@ -68,6 +68,7 @@
 - 本地 sidecar 401 恢复是标准 local token 恢复，不依赖 Tempo `success=false/code=401/message` 响应格式。
 - 登录页异步回填已记住凭据不能覆盖用户已经编辑过的表单。
 - 全局、目录和模型弹窗的 provider 查询必须复用 `loadProvidersQuery()` 的恢复逻辑；恢复成功后必须使用新建 SDK client 重新读取新 token 并重试一次。
+- 登录、登出、静默恢复或持久化 token hydrate 导致 `auth.token()` 变化时，必须失效同一 server scope 下的全局和目录 provider query；不能要求用户右键刷新后才能选中模型。
 - 模型列表恢复成功后必须刷新目录级 provider query cache，保证 `useProviders()`、`useModels()` 和 prompt submit 使用同一份新模型数据；恢复失败必须 `logout` 并导航到 `/login`。
 - 登录页自动填入密码意味着 Desktop renderer 会短暂持有明文密码；该行为是当前产品需求的一部分，但落盘必须只存 `safeStorage` 密文，且 server 不能常驻保存密码。
 - 公司 Tempo token 失效恢复只接入公司 Tempo 模型列表和 metric 链路；本地 sidecar 401 恢复只在 Desktop SDK fetch 适配层处理，不在各个 session、event、file、workspace 接口内分散实现。

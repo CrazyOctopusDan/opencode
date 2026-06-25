@@ -1,7 +1,7 @@
 import type { Config, OpencodeClient, Path, Project, ProviderAuthResponse, Todo } from "@opencode-ai/sdk/v2/client"
 import { showToast } from "@/utils/toast"
 import { getFilename } from "@opencode-ai/core/util/path"
-import { type Accessor, batch, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
+import { type Accessor, batch, createEffect, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import type { InitError } from "../pages/error"
@@ -11,6 +11,7 @@ import {
   bootstrapDirectory,
   bootstrapGlobal,
   clearProviderRev,
+  invalidateProviderQueries,
   loadAgentsQuery,
   loadGlobalConfigQuery,
   loadPathQuery,
@@ -152,6 +153,13 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   })
 
   const queryClient = useQueryClient()
+  let lastAuthToken = untrack(() => auth.token())
+  createEffect(() => {
+    const next = auth.token()
+    if (next === lastAuthToken) return
+    lastAuthToken = next
+    void invalidateProviderQueries(queryClient, serverSDK.scope)
+  })
 
   let bootedAt = 0
   let bootingRoot = false
@@ -470,10 +478,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
       bootstrap.refetch()
       // Invalidate all provider queries so newly configured custom providers
       // appear immediately in the available provider list across all directories.
-      queryClient.invalidateQueries({ queryKey: [serverSDK.scope, null, "providers"] })
-      queryClient.invalidateQueries({
-        predicate: (query) => query.queryKey[0] === serverSDK.scope && query.queryKey[2] === "providers",
-      })
+      void invalidateProviderQueries(queryClient, serverSDK.scope)
     },
   }))
 

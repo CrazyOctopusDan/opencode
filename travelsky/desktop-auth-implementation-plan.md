@@ -435,7 +435,7 @@ return fetch(url(), {
   method: "POST",
   headers: head,
   body: JSON.stringify(input),
-  signal: AbortSignal.timeout(1_500),
+  signal: AbortSignal.timeout(10_000),
 })
   .then((res) => res.ok)
   .catch((err) => {
@@ -453,7 +453,7 @@ return fetch(url(), {
   method: "POST",
   headers: head,
   body: JSON.stringify(input),
-  signal: AbortSignal.timeout(1_500),
+  signal: AbortSignal.timeout(10_000),
 })
   .then(async (res) => {
     const payload = await res.json().catch(() => undefined)
