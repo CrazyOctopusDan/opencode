@@ -207,13 +207,15 @@ describe("session metric", () => {
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
-      toolVersion: "local",
+      toolVersion: "1.17.9",
       ideName: "OpenCode",
-      ideVersion: "local",
+      ideVersion: "",
       projectName: "tmp",
       requestContent: "write code",
       responseContent: "const a = 1\nconst b = 2",
     })
+    expect(body?.toolVersion.length).toBeLessThanOrEqual(15)
+    expect(body?.ideVersion.length).toBeLessThanOrEqual(15)
   })
 
   test("uses explicit metric tool name before client fallback", () => {

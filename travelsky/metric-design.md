@@ -16,9 +16,9 @@
   - `sessionId`：会话 ID
   - `codeLanguage`：代码语言，按本轮文件变更语言分布取主语言
   - `toolName`：插件名称，优先使用显式 `OPENCODE_TOOL_NAME`；Desktop sidecar 注入 `opencode-desktop`，其他本地 client 默认为 `opencode-cli`
-  - `toolVersion`：插件版本，使用当前 opencode 安装版本；发布版本源为 `packages/opencode/package.json`，GitHub Actions 读取后通过 `OPENCODE_VERSION` 注入 build
+  - `toolVersion`：统计接口固定短版本，当前为 `1.17.9`；后端字段长度有限，后续开发版本直接修改 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`
   - `ideName`：IDE 名称，当前固定为 `OpenCode`
-  - `ideVersion`：IDE 版本，使用当前 opencode 安装版本
+  - `ideVersion`：IDE 版本，当前固定为空字符串；本项目不统计 VSCode 等外部 IDE 版本，避免后端长度限制拒绝写库
   - `projectName`：代码项目名称，使用 assistant path root 的目录名
   - `requestContent`：模型请求内容，当前可观测口径为本轮 user prompt 文本
   - `responseContent`：模型响应内容，当前可观测口径为同一 `parentID` 下 assistant 文本
@@ -62,12 +62,13 @@
   - 统计构建时优先读取 `OPENCODE_TOOL_NAME`，仅接受 `opencode-desktop` 或 `opencode-cli`。
   - Desktop 普通 sidecar 在 Electron main 进程环境中设置 `OPENCODE_TOOL_NAME=opencode-desktop`；WSL sidecar 启动脚本同步导出该变量。
   - 如果没有显式变量，则兼容旧逻辑：`OPENCODE_CLIENT=desktop` 时为 `opencode-desktop`，否则为 `opencode-cli`。
-- `toolVersion` / `ideVersion`：
-  - 单一版本源为 `packages/opencode/package.json` 的 `version`。
-  - fork 的 GitHub Actions 先读取该版本，再把它作为 `OPENCODE_VERSION` 传入 CLI build 和 Desktop prepare。
+- `toolVersion`：
+  - 统计接口固定短版本，当前为 `1.17.9`，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`。
+  - 不跟随 `InstallationVersion`，避免发布包版本或构建标识过长导致后端拒绝写库。
+- `ideVersion`：
+  - 统计接口固定为空字符串，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricIdeVersion`。
+  - 本项目不需要统计 VSCode 等外部 IDE 版本，也不使用 opencode 安装版本填充该字段，避免字段长度限制再次拒绝写库。
   - CLI 二进制 build 必须注入 `OPENCODE_TOOL_NAME=opencode-cli`；Desktop sidecar 使用运行时环境注入 `OPENCODE_TOOL_NAME=opencode-desktop`。
-  - CLI 二进制 build 与 Desktop sidecar 使用的 node server build 都必须通过 `define.OPENCODE_VERSION = Script.version` 注入 `InstallationVersion`，避免生产包上报 `local`。
-  - Desktop `packages/desktop/scripts/prepare.ts` 会把同一个 `Script.version` 写入 `packages/desktop/package.json`，保证 electron-builder 打包版本和统计版本同源。
 
 ## 第一版统计矩阵（历史实现，保留供后续维度变化参考）
 
@@ -143,7 +144,7 @@
 - 轻量修改 `packages/opencode/script/build.ts`
   - 为 CLI 二进制打包注入 `OPENCODE_TOOL_NAME=opencode-cli`，保证 CLI 生产包生成记录上报为 CLI。
 - 轻量修改 `packages/opencode/script/build-node.ts`
-  - 为 Desktop sidecar 引用的 node server bundle 注入 `OPENCODE_VERSION`，保证 `InstallationVersion` 能取到 GitHub Actions 发布版本。
+  - 为 Desktop sidecar 引用的 node server bundle 注入 `OPENCODE_VERSION`，该值不再进入当前统计接口的 `toolVersion` 或 `ideVersion`。
 - 轻量修改 `packages/opencode/src/tool/write.ts`
   - 为 `write` 工具补充 `metadata.filediff`，供 v1 在 snapshot diff 缺失时兜底统计文件状态与行数。
 - 轻量修改 `packages/opencode/src/session/prompt.ts`

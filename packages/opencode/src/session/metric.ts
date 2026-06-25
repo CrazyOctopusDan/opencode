@@ -1,7 +1,6 @@
 import type { MessageV2 } from "./message-v2"
 import type { MessageID } from "./schema"
 import { Flag } from "@opencode-ai/core/flag/flag"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import type { Snapshot } from "@/snapshot"
 
 type FileChangeV1 = {
@@ -48,6 +47,10 @@ type AdoptionBody = {
   adoptedContent: string
   deletedLines: number
 }
+
+// TravelSky metric backend rejects long package and IDE versions; keep these short at the payload boundary.
+const metricToolVersion = "1.17.9"
+const metricIdeVersion = ""
 
 function travel(input: string) {
   return input.trim().toLowerCase() === "travelsky"
@@ -322,9 +325,9 @@ export namespace SessionMetric {
       sessionId: rows[0].info.sessionID,
       codeLanguage: dominant(changes),
       toolName: toolName(),
-      toolVersion: InstallationVersion,
+      toolVersion: metricToolVersion,
       ideName: "OpenCode",
-      ideVersion: InstallationVersion,
+      ideVersion: metricIdeVersion,
       projectName: projectName(rows[0]),
       requestContent: request ? content([request]) : "",
       responseContent: content(rows),
