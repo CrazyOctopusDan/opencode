@@ -11,6 +11,10 @@ import PROMPT_GPT from "./prompt/gpt.txt"
 import PROMPT_KIMI from "./prompt/kimi.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
+import PROMPT_DEEPSEEK from "./prompt/deepseek.txt"
+import PROMPT_GLM from "./prompt/glm.txt"
+import PROMPT_MINIMAX from "./prompt/minimax.txt"
+import PROMPT_QWEN from "./prompt/qwen.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
@@ -23,18 +27,31 @@ import { PluginBoot } from "@opencode-ai/core/plugin/boot"
 import { Reference } from "@opencode-ai/core/reference"
 
 export function provider(model: Provider.Model) {
-  if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
-    return [PROMPT_BEAST]
-  if (model.api.id.includes("gpt")) {
-    if (model.api.id.includes("codex")) {
+  const exact = [model.id, model.api.id].join(" ").toLowerCase()
+  const display = [model.name, model.providerID].join(" ").toLowerCase()
+  const includes = (values: string[], input = exact) => values.some((value) => input.includes(value))
+
+  if (includes(["gpt-4", "o1", "o3"])) return [PROMPT_BEAST]
+  if (includes(["gpt"])) {
+    if (includes(["codex"])) {
       return [PROMPT_CODEX]
     }
     return [PROMPT_GPT]
   }
-  if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
-  if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
-  if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
-  if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_KIMI]
+  if (includes(["gemini-"])) return [PROMPT_GEMINI]
+  if (includes(["claude"])) return [PROMPT_ANTHROPIC]
+  if (includes(["dsv4", "deepseek-v4", "deepseek"])) return [PROMPT_DEEPSEEK]
+  if (includes(["qwen", "qwq", "tongyi"])) return [PROMPT_QWEN]
+  if (includes(["glm"])) return [PROMPT_GLM]
+  if (includes(["minimax"])) return [PROMPT_MINIMAX]
+  if (includes(["trinity"])) return [PROMPT_TRINITY]
+  if (includes(["kimi"])) return [PROMPT_KIMI]
+  if (includes(["dsv4", "deepseek-v4", "deepseek"], display)) return [PROMPT_DEEPSEEK]
+  if (includes(["qwen", "qwq", "tongyi"], display)) return [PROMPT_QWEN]
+  if (includes(["glm"], display)) return [PROMPT_GLM]
+  if (includes(["minimax"], display)) return [PROMPT_MINIMAX]
+  if (includes(["trinity"], display)) return [PROMPT_TRINITY]
+  if (includes(["kimi"], display)) return [PROMPT_KIMI]
   return [PROMPT_DEFAULT]
 }
 
@@ -70,6 +87,7 @@ export const layer = Layer.effect(
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
           ].join("\n"),
+          `IMPORTANT: Your response must ALWAYS strictly follow the same major language as the user.`,
           references.length === 0
             ? undefined
             : [

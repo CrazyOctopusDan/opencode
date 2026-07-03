@@ -128,12 +128,18 @@ function asArray(value: unknown) {
 }
 
 function normalizeModel(item: Record<string, unknown>) {
+  const companyRow = typeof item.provider === "string" || typeof item.apiBase === "string"
   const model = [item.model, item.model_id, item.modelId, item.modelCode, item.code].find(
     (value) => typeof value === "string" && value.length > 0,
   )
-  const id = [model, item.id, item.name].find((value) => typeof value === "string" && value.length > 0)
+  const id =
+    typeof model === "string"
+      ? model
+      : companyRow
+        ? undefined
+        : [item.id, item.name].find((value) => typeof value === "string" && value.length > 0)
   if (typeof id !== "string") return
-  const name = [item.title, item.titile, item.name, item.modelName].find(
+  const title = [item.title, item.titile, companyRow ? undefined : item.name, companyRow ? undefined : item.modelName].find(
     (value) => typeof value === "string" && value.length > 0,
   )
   const apiKey = typeof item.apiKey === "string" && item.apiKey.length > 0 ? item.apiKey : undefined
@@ -156,7 +162,7 @@ function normalizeModel(item: Record<string, unknown>) {
       : undefined
   return {
     id,
-    name: typeof name === "string" ? name : id,
+    name: typeof title === "string" ? title : id,
     ...(baseURL ? { baseURL } : {}),
     ...(apiKey ? { apiKey } : {}),
     ...(contextLength ? { contextLength } : {}),

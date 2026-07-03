@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import type { Agent } from "../../src/agent/agent"
 import { NamedError } from "@opencode-ai/core/util/error"
@@ -7,6 +7,7 @@ import { Permission } from "../../src/permission"
 import { SystemPrompt } from "../../src/session/system"
 import { LocationServiceMap } from "@opencode-ai/core/location-layer"
 import { testEffect } from "../lib/effect"
+import type { Provider } from "../../src/provider/provider"
 
 const skills: Skill.Info[] = [
   {
@@ -41,6 +42,36 @@ const build: Agent.Info = {
   options: {},
 }
 
+function model(input: { model: string; apiID: string; title: string; providerID?: string }) {
+  return {
+    id: input.model,
+    providerID: input.providerID ?? "travelSky",
+    api: {
+      id: input.apiID,
+      url: "https://tempo.test/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: input.title,
+    family: "",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 32000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "",
+    variants: {},
+  } as Provider.Model
+}
+
 const it = testEffect(
   SystemPrompt.layer.pipe(
     Layer.provide(LocationServiceMap.layer),
@@ -64,6 +95,43 @@ const it = testEffect(
 )
 
 describe("session.system", () => {
+  test("routes company qwen model values to the qwen prompt even when api id is an internal database id", () => {
+    const prompts = SystemPrompt.provider(
+      model({
+        model: "qwen3.5-coder",
+        apiID: "1000001",
+        title: "Qwen3.5",
+      }),
+    )
+
+    expect(prompts.join("\n")).toContain("Qwen")
+    expect(prompts.join("\n")).toContain("Match the user's language")
+  })
+
+  test("routes dsv4 company models to the deepseek prompt before qwen fallback", () => {
+    const prompts = SystemPrompt.provider(
+      model({
+        model: "dsv4",
+        apiID: "1000002",
+        title: "dsv4",
+      }),
+    )
+
+    expect(prompts.join("\n")).toContain("powered by deepseek")
+  })
+
+  test("routes dsv4-flash company models to the deepseek prompt", () => {
+    const prompts = SystemPrompt.provider(
+      model({
+        model: "dsv4-flash",
+        apiID: "1000003",
+        title: "dsv4-flash",
+      }),
+    )
+
+    expect(prompts.join("\n")).toContain("powered by deepseek")
+  })
+
   it.effect("skills output is sorted by name and stable across calls", () =>
     Effect.gen(function* () {
       const prompt = yield* SystemPrompt.Service

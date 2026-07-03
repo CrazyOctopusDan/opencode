@@ -68,6 +68,40 @@ describe("tempo api login", () => {
 })
 
 describe("tempo api model normalization", () => {
+  test("uses company model field instead of internal database id", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: [
+            {
+              id: "internal-db-row-1001",
+              title: "dsv4",
+              provider: "openai",
+              apiBase: "https://tempo.travelsky.com.cn/dsv4/v1",
+              model: "dsv4",
+            },
+          ],
+        }),
+      )) as unknown as typeof fetch
+
+    try {
+      const result = await TempoApi.listModels({ token: "test-token" })
+      expect(result.status).toBe("ok")
+      if (result.status !== "ok") throw new Error("expected ok model list")
+      expect(result.providers[0]?.models).toEqual([
+        {
+          id: "dsv4",
+          name: "dsv4",
+          baseURL: "https://tempo.travelsky.com.cn/dsv4/v1",
+        },
+      ])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("maps row payload into single travelSky provider with model-level baseURL", async () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
