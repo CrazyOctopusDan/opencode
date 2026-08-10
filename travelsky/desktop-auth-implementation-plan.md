@@ -403,7 +403,7 @@ test("skips generation metric send when Tempo reports token expiration", async (
       sessionId: "ses_1",
       codeLanguage: "Other",
       toolName: "opencode-cli",
-      toolVersion: "1.17.9",
+      toolVersion: "1.18.15",
       ideName: "OpenCode",
       ideVersion: "",
       projectName: "demo",

@@ -28,7 +28,7 @@
 - **D-05:** `requestContent` 使用本轮父 user message 文本；`responseContent` 使用同一 `parentID` 下 assistant 文本。
 - **D-06:** `generatedLines` 与生成记录 `adoptedLines` 使用第一版文件变更聚合得到的新增行数；`codeLanguage` 使用该聚合中的主语言。
 - **D-13:** `toolName` 优先使用显式 `OPENCODE_TOOL_NAME`；CLI build 必须注入 `opencode-cli`，Desktop sidecar/WSL sidecar 必须注入 `opencode-desktop`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
-- **D-14:** `toolVersion` 使用统计接口固定短版本，当前为 `1.17.9`，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`；`ideVersion` 使用统计接口固定空字符串，来源为 `metricIdeVersion`，当前不统计 VSCode 等外部 IDE 版本。
+- **D-14:** `toolVersion` 使用统计接口固定短版本，当前为 `1.18.15`，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`；`ideVersion` 使用统计接口固定空字符串，来源为 `metricIdeVersion`，当前不统计 VSCode 等外部 IDE 版本。
 - **D-09:** 第一版 `other.v1` 矩阵不再作为当前接口 body 发送，但其文件变更聚合仍作为 `generatedLines/codeLanguage` 的来源：优先使用完成态 `Snapshot.FileDiff`，合并 `edit/write/apply_patch` 工具 metadata 覆盖不到的文件，diff 为空时兜底到工具 metadata。
 - **D-10:** 第一版 `other.v2` 会话/工具矩阵保留在文档中作为历史口径，不进入当前生成记录接口。
 - **D-11:** 采纳量接口必须使用生成记录返回的 `data` 作为 `qaid`；只要本轮最终文件 diff 有新增或删除行，即视为采纳。
@@ -52,7 +52,7 @@
 - 优先“独立文件 + 最小接入点”，减少后续与上游合并冲突。
 - 第一版 `text/modelName/other.v1/v2` 保留在实现文档中，不再作为当前请求体发送；当前生成记录接口只保留平铺 `modelName` 字段。
 - 当前接口字段直接平铺为生成记录 body，避免后端继续解析旧矩阵。
-- `toolVersion` 在接口构建处集中为短版本常量，当前为 `1.17.9`；`ideVersion` 在接口构建处集中为空字符串；两个字段都不再使用 `InstallationVersion`，用于满足后端字段长度限制。
+- `toolVersion` 在接口构建处集中为短版本常量，当前为 `1.18.15`；`ideVersion` 在接口构建处集中为空字符串；两个字段都不再使用 `InstallationVersion`，用于满足后端字段长度限制。
 
 </specifics>
 

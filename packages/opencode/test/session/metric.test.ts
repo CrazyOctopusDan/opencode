@@ -207,7 +207,7 @@ describe("session metric", () => {
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
-      toolVersion: "1.17.9",
+      toolVersion: "1.18.15",
       ideName: "OpenCode",
       ideVersion: "",
       projectName: "tmp",

@@ -101,10 +101,8 @@ beforeEach(() => {
   })
   platform = {
     platform: "desktop",
-    openLink() {},
+    openExternal() {},
     async restart() {},
-    back() {},
-    forward() {},
     async notify() {},
     async openDirectoryPickerDialog() {
       return null

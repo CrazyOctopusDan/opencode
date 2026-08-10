@@ -15,10 +15,8 @@ type SecureCredentialApi = {
 
 const webPlatform: Platform = {
   platform: "web",
-  openLink() {},
+  openExternal() {},
   async restart() {},
-  back() {},
-  forward() {},
   async notify() {},
 }
 

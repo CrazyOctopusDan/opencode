@@ -9,25 +9,26 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { createMemo, createResource, type Component, Show } from "solid-js"
 import { useLocal } from "@/context/local"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { DialogConnectProvider } from "./dialog-connect-provider"
-import { DialogSelectProvider } from "./dialog-select-provider"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { useAuth } from "@/context/auth"
 import { useSDK } from "@/context/sdk"
 import { loadProvidersQuery } from "@/context/global-sync/bootstrap"
 import { useQueryClient } from "@tanstack/solid-query"
-import type { NormalizedProviderListResponse } from "@opencode-ai/ui/context"
+import type { NormalizedProviderListResponse } from "@opencode-ai/session-ui/context"
+import { decode64 } from "@/utils/base64"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
 export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props) => {
-  const model = props.model ?? useLocal().model
+  const local = useLocal()
+  const model = props.model ?? local.model
   const sdk = useSDK()
   const queryClient = useQueryClient()
   const dialog = useDialog()
   const navigate = useNavigate()
-  const providers = useProviders()
+  const directory = () => decode64(local.slug())
+  const providers = useProviders(directory)
   const language = useLanguage()
   const auth = useAuth()
   const [providerData] = createResource(async () => {
@@ -94,6 +95,17 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
     if (!list?.ok) return []
     return list.models
   })
+
+  const openProviders = (provider?: string) => {
+    void import("./dialog-connect-provider").then((x) => {
+      const controller = x.useProviderConnectController()
+      controller.select(provider)
+      void dialog.show(() => <x.DialogConnectProvider controller={controller} directory={directory} />)
+    })
+  }
+
+  const connect = (provider: string) => openProviders(provider)
+  const all = () => openProviders()
 
   let listRef: ListRef | undefined
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -178,7 +190,7 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
                   }}
                   onSelect={(x) => {
                     if (!x) return
-                    dialog.show(() => <DialogConnectProvider provider={x.id} />)
+                    connect(x.id)
                   }}
                 >
                   {(i) => (
@@ -186,7 +198,9 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
                       <ProviderIcon data-slot="list-item-extra-icon" id={i.id} />
                       <span>{i.name}</span>
                       <Show when={i.id === "opencode"}>
-                        <div class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</div>
+                        <div class="text-14-regular text-text-weak">
+                          {language.t("dialog.provider.opencode.tagline")}
+                        </div>
                       </Show>
                       <Show when={i.id === "opencode"}>
                         <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
@@ -209,9 +223,7 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
                   variant="ghost"
                   class="w-full justify-start px-[11px] py-3.5 gap-4.5 text-14-medium"
                   icon="dot-grid"
-                  onClick={() => {
-                    dialog.show(() => <DialogSelectProvider />)
-                  }}
+                  onClick={all}
                 >
                   {language.t("dialog.provider.viewAll")}
                 </Button>

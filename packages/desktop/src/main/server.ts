@@ -43,14 +43,16 @@ export function setDefaultServerUrl(url: string | null) {
 
 export function preferAppEnv(userDataPath: string) {
   const shell = process.platform === "win32" ? null : getUserShell()
+  const shellEnv = shell ? loadShellEnv(shell, getLogger()) : null
   Object.assign(process.env, {
-    ...(shell ? loadShellEnv(shell, getLogger()) : null),
+    ...shellEnv,
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_CLIENT: "desktop",
     OPENCODE_TOOL_NAME: "opencode-desktop",
     XDG_STATE_HOME: process.env.XDG_STATE_HOME ?? userDataPath,
   })
+  return shellEnv
 }
 
 export async function spawnLocalServer(
@@ -183,9 +185,9 @@ export async function spawnLocalServer(
 }
 
 export async function checkHealth(url: string, password?: string | null): Promise<boolean> {
-  let healthUrl: URL
+  let healthUrls: URL[]
   try {
-    healthUrl = new URL("/global/health", url)
+    healthUrls = [new URL("/api/health", url), new URL("/global/health", url)]
   } catch {
     return false
   }
@@ -196,16 +198,17 @@ export async function checkHealth(url: string, password?: string | null): Promis
     headers.set("authorization", `Basic ${auth}`)
   }
 
-  try {
-    const res = await fetch(healthUrl, {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(3000),
-    })
-    return res.ok
-  } catch {
-    return false
+  for (const healthUrl of healthUrls) {
+    try {
+      const res = await fetch(healthUrl, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(3000),
+      })
+      if (res.ok) return true
+    } catch {}
   }
+  return false
 }
 
 function createSidecarEnv(): Record<string, string> {
@@ -214,7 +217,6 @@ function createSidecarEnv(): Record<string, string> {
   )
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD
-  if (!app.isPackaged) env.OPENCODE_DISABLE_CHANNEL_DB = "1"
   return env
 }
 

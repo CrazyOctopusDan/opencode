@@ -16,7 +16,7 @@
   - `sessionId`：会话 ID
   - `codeLanguage`：代码语言，按本轮文件变更语言分布取主语言
   - `toolName`：插件名称，优先使用显式 `OPENCODE_TOOL_NAME`；Desktop sidecar 注入 `opencode-desktop`，其他本地 client 默认为 `opencode-cli`
-  - `toolVersion`：统计接口固定短版本，当前为 `1.17.9`；后端字段长度有限，后续开发版本直接修改 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`
+  - `toolVersion`：统计接口固定短版本，当前为 `1.18.15`；后端字段长度有限，后续开发版本直接修改 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`
   - `ideName`：IDE 名称，当前固定为 `OpenCode`
   - `ideVersion`：IDE 版本，当前固定为空字符串；本项目不统计 VSCode 等外部 IDE 版本，避免后端长度限制拒绝写库
   - `projectName`：代码项目名称，使用 assistant path root 的目录名
@@ -63,7 +63,7 @@
   - Desktop 普通 sidecar 在 Electron main 进程环境中设置 `OPENCODE_TOOL_NAME=opencode-desktop`；WSL sidecar 启动脚本同步导出该变量。
   - 如果没有显式变量，则兼容旧逻辑：`OPENCODE_CLIENT=desktop` 时为 `opencode-desktop`，否则为 `opencode-cli`。
 - `toolVersion`：
-  - 统计接口固定短版本，当前为 `1.17.9`，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`。
+  - 统计接口固定短版本，当前为 `1.18.15`，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion`。
   - 不跟随 `InstallationVersion`，避免发布包版本或构建标识过长导致后端拒绝写库。
 - `ideVersion`：
   - 统计接口固定为空字符串，来源为 `packages/opencode/src/session/metric.ts` 中的 `metricIdeVersion`。

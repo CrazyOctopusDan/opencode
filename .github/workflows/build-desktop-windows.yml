@@ -28,31 +28,8 @@ jobs:
           V=$(node -p "require('./packages/opencode/package.json').version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
-  build-cli:
-    needs: version
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-tags: true
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Build CLI
-        run: ./packages/opencode/script/build.ts
-        env:
-          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opencode-cli-windows
-          path: packages/opencode/dist/opencode-windows*
-
   build-desktop-windows:
-    needs:
-      - version
-      - build-cli
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -78,26 +55,20 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: opencode-cli-windows
-          path: packages/opencode/dist
-
       - name: Prepare
         run: bun ./scripts/prepare.ts
         working-directory: packages/desktop
         env:
           OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           OPENCODE_CHANNEL: prod
-          OPENCODE_CLI_ARTIFACT: opencode-cli-windows
           RUST_TARGET: ${{ matrix.settings.target }}
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
 
       - name: Build
         run: bun run build
         working-directory: packages/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
           OPENCODE_CHANNEL: prod
 
       - name: Package

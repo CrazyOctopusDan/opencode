@@ -38,7 +38,7 @@
 - `toolName` 必须优先使用显式 `OPENCODE_TOOL_NAME`；仅接受 `opencode-desktop` 或 `opencode-cli`；无显式变量时才回退到 `OPENCODE_CLIENT` 推断。
 - CLI 二进制 build 必须显式注入 `OPENCODE_TOOL_NAME=opencode-cli`，不能只依赖默认 fallback。
 - Desktop 普通 sidecar 与 WSL sidecar 必须显式注入 `OPENCODE_TOOL_NAME=opencode-desktop`，不能依赖本地 server 启动方式或打包 artifact 名称推断。
-- `toolVersion` 必须使用 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion` 固定短版本，当前为 `1.17.9`，不能回退到 `InstallationVersion`。
+- `toolVersion` 必须使用 `packages/opencode/src/session/metric.ts` 中的 `metricToolVersion` 固定短版本，当前为 `1.18.15`，不能回退到 `InstallationVersion`。
 - `ideVersion` 必须使用 `packages/opencode/src/session/metric.ts` 中的 `metricIdeVersion` 固定空字符串，不能回退到 `InstallationVersion`、`OPENCODE_VERSION` 或包版本。
 - `requestContent` 必须来自本轮父 user message 文本；`responseContent` 必须来自同一 `parentID` 下非 summary assistant 文本。
 - `generatedLines` 与生成记录 `adoptedLines` 必须使用第一版文件变更聚合的新增行数，且类型为 Integer；`codeLanguage` 必须使用该聚合中的主语言。
@@ -72,7 +72,7 @@
 - 在 `packages/desktop` 目录运行：`bun test src/main/metric-env.test.ts`，验证 Desktop sidecar 工具名注入。
 - 在 `packages/opencode` 目录运行：`bun typecheck`。
 - 如果本机 `bun typecheck` 因 `@typescript/native-preview-darwin-arm64` wrapper 解析失败，可使用仓库已安装的 native `tsgo --noEmit` 二进制进行同等类型检查，并在结果中注明 wrapper 问题。
-- 人工检查生成记录请求体，确认 URL 为 `/ai/data/api/record/saveGeneration`，字段为当前平铺 body，`toolVersion` 为 `1.17.9`，`ideVersion` 为空字符串，且不再发送第一版 `other.v1/v2`。
+- 人工检查生成记录请求体，确认 URL 为 `/ai/data/api/record/saveGeneration`，字段为当前平铺 body，`toolVersion` 为 `1.18.15`，`ideVersion` 为空字符串，且不再发送第一版 `other.v1/v2`。
 - 人工检查采纳量发送层，确认 `/ai/data/api/record/addAdoption` 的 `qaid` 来自生成记录响应 `data`，且 `adoptedContent` 为空字符串。
 
 ## 停止条件
