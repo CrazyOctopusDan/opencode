@@ -59,7 +59,11 @@ runs:
         # e.g. ./patches/ for standard-openapi
         # https://github.com/oven-sh/bun/issues/28147
         if [ "$RUNNER_OS" = "Windows" ]; then
-          bun install --linker hoisted ${{ inputs.install-flags }}
+          # Retry Windows install after patched-cache race.
+          if ! bun install --linker hoisted ${{ inputs.install-flags }}; then
+            echo "::warning::Bun install hit a transient Windows patched-cache failure; retrying once"
+            bun install --linker hoisted ${{ inputs.install-flags }}
+          fi
         else
           bun install ${{ inputs.install-flags }}
         fi
