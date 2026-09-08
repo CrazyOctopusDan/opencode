@@ -29,11 +29,14 @@ import { MCP } from "@/mcp"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 
 export function provider(model: Provider.Model) {
-  if (model.api.id.includes("muse-spark")) return [PROMPT_META]
-
   const exact = [model.id, model.api.id].join(" ").toLowerCase()
   const display = model.name?.toLowerCase() ?? ""
   const includes = (values: string[], input = exact) => values.some((value) => input.includes(value))
+
+  if (includes(["muse"])) {
+    const name = includes(["muse-glimmer"]) ? "Muse Glimmer" : "Muse Spark"
+    return [PROMPT_META.replaceAll("{{MODEL_NAME}}", name)]
+  }
 
   if (includes(["gpt-4", "o1", "o3"])) return [PROMPT_BEAST]
   if (includes(["gpt"])) {
@@ -56,6 +59,7 @@ export function provider(model: Provider.Model) {
   if (includes(["minimax"], display)) return [PROMPT_MINIMAX]
   if (includes(["trinity"], display)) return [PROMPT_TRINITY]
   if (includes(["kimi"], display)) return [PROMPT_KIMI]
+  if (["kimi-for-coding", "moonshotai", "moonshotai-cn"].includes(model.providerID)) return [PROMPT_KIMI]
   return [PROMPT_DEFAULT]
 }
 

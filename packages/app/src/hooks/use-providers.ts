@@ -59,6 +59,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
   return {
     all: enterprise,
     default: createMemo(() => providers().default),
+    defaultModel: () => providers().defaultModel,
     popular,
     connected,
     paid,

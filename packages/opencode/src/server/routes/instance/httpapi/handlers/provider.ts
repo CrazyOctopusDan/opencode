@@ -2,6 +2,7 @@ import { ProviderAuth } from "@/provider/auth"
 import { Config } from "@/config/config"
 import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { Provider } from "@/provider/provider"
+import { Auth } from "@/auth"
 
 import { mapValues } from "remeda"
 import { Effect, Schema } from "effect"
@@ -45,6 +46,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const cfg = yield* Config.Service
     const provider = yield* Provider.Service
     const svc = yield* ProviderAuth.Service
+    const authStore = yield* Auth.Service
 
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
       const config = yield* cfg.get()
@@ -60,11 +62,15 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filtered[key] = value
       }
       const connected = yield* provider.list()
+      const credentials = yield* authStore.all().pipe(Effect.orDie)
       const providers = policy.expired
         ? {}
         : policy.enabled
           ? Object.assign({}, connected, Provider.fromModelPolicy(policy.list))
-          : Object.assign(mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)), connected)
+          : Object.assign(
+              mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)),
+              connected,
+            )
       const metricSummary = TempoMetric.summary()
       const debugTempo =
         policy.expired || metricSummary
@@ -76,7 +82,11 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       return {
         all: Object.values(providers).map(Provider.toPublicInfo),
         default: Provider.defaultModelIDs(providers),
-        connected: policy.expired ? [] : policy.enabled ? Object.keys(providers) : Object.keys(connected),
+        connected: policy.expired
+          ? []
+          : policy.enabled
+            ? Object.keys(providers)
+            : Object.keys(providers).filter((id) => id in connected || credentials[id]),
         ...(debugTempo ? { debug_tempo: debugTempo } : {}),
       }
     })
