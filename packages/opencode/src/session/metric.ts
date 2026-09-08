@@ -49,7 +49,7 @@ type AdoptionBody = {
 }
 
 // TravelSky metric backend rejects long package and IDE versions; keep these short at the payload boundary.
-const metricToolVersion = "1.18.15"
+const metricToolVersion = "1.18.29"
 const metricIdeVersion = ""
 
 function travel(input: string) {

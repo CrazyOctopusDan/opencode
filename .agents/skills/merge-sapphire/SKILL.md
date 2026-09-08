@@ -14,7 +14,7 @@ Use this skill when merging source branch `dev` into the secondary-development b
 - On `dev-sapphire`, `git merge dev` means `ours` is `dev-sapphire` and `theirs` is `dev`.
 - Read `travelsky/changes-baseline.md` before resolving any business conflict.
 - Read every `travelsky/baseline-checklists/*.md` file if the directory exists.
-- Do not edit `travelsky/changes-baseline.md` or checklist files during a merge unless the user explicitly asks.
+- Preserve `travelsky/changes-baseline.md` and checklist files during a merge, except for the metric tool-version alignment described below; other edits require an explicit user request.
 - Resolve `bun.lock` conflicts with the source branch version from `dev` (`theirs`).
 - Do not resolve business-code conflicts by whole-file overwrite unless the file is generated or both sides are mechanically equivalent.
 - Preserve Sapphire/TravelSky behavior first, then integrate upstream changes around it.
@@ -154,6 +154,18 @@ Compare these `publish.yml` areas against the fork workflows:
 
 Update `.github/workflows/build-desktop-windows.yml` or `.github/workflows/build-desktop-linux.yml` when the fork workflows drift from the official Windows/Linux packaging flow. Keep fork-specific differences intentional and small: `dev-sapphire` trigger, no release publishing, and no signing unless explicitly required.
 
+## Metric Tool Version Audit
+
+Run after every merge, including an already-up-to-date result, before final verification.
+
+1. Read the release version from the exact `dev` commit being merged: `git show dev:packages/opencode/package.json`. Record that commit and version; also check the merged `packages/opencode/package.json` agrees.
+2. Trace the actual generation payload through `SessionMetric.build()` in `packages/opencode/src/session/metric.ts` and `TempoMetric.sendGeneration()` in `packages/opencode/src/server/tempo-metric.ts`. The `toolVersion` sent to `/ai/data/api/record/saveGeneration` must equal the source release version.
+3. If different, update the explicit `metricToolVersion` short-version constant to that version. Preserve the backend length limit and empty `ideVersion`; do not substitute a development/build suffix or `InstallationVersion`. If the source version exceeds the backend limit, report the incompatibility instead of silently truncating it.
+4. Keep the payload regression assertion in `test/session/metric.test.ts` tied to the merged package version, so a future version bump fails when the constant is stale. Run it together with `test/server/tempo-metric.test.ts` from `packages/opencode`.
+5. Replace stale fixed-version requirements in `travelsky/changes-baseline.md` and `travelsky/baseline-checklists/metric-reporting.md` with the source-version alignment rule. This exception only permits metric-version maintenance; preserve historical design records and all other invariants.
+
+Complete only when the source version, merged package version, and actual payload `toolVersion` agree. Report the old and new values and test result; local tests do not establish that a deployed backend has received the new version.
+
 ## Verification
 
 Run from package directories, never from repo root.
@@ -194,5 +206,6 @@ Report:
 - baseline/checklist invariants preserved;
 - CLI and desktop files touched;
 - Bun version and packaging workflow audit results;
+- metric payload `toolVersion` compared with the merged dev version, any correction, and its regression result;
 - verification commands and results;
 - any unresolved risk or skipped verification.

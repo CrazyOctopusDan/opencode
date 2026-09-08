@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import type { MessageV2 } from "../../src/session/message-v2"
+import pkg from "../../package.json"
 import { SessionMetric } from "../../src/session/metric"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 
@@ -207,7 +208,7 @@ describe("session metric", () => {
       sessionId: "ses_1",
       codeLanguage: "TS",
       toolName: "opencode-cli",
-      toolVersion: "1.18.15",
+      toolVersion: pkg.version,
       ideName: "OpenCode",
       ideVersion: "",
       projectName: "tmp",
