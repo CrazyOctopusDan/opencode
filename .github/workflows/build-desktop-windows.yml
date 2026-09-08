@@ -1,6 +1,6 @@
-# Fork dedicated Windows desktop packaging workflow.
+# Fork Windows desktop and standalone CLI packaging workflow.
 
-name: Build Desktop (Windows)
+name: Build Desktop and CLI (Windows)
 
 on:
   push:
@@ -27,6 +27,40 @@ jobs:
         run: |
           V=$(node -p "require('./packages/opencode/package.json').version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
+
+  build-cli-windows:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      # Reuse upstream's cross-platform CLI build, including the embedded Web UI.
+      # OPENCODE_RELEASE stays unset: archives are uploaded here, never published.
+      - name: Build CLI
+        run: bun ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+          OPENCODE_CHANNEL: prod
+
+      - name: Package CLI
+        shell: bash
+        working-directory: packages/opencode
+        run: |
+          for target in opencode-windows-arm64 opencode-windows-x64 opencode-windows-x64-baseline; do
+            test -s "dist/$target/bin/opencode.exe"
+            (cd "dist/$target/bin" && zip -r "../../$target.zip" .)
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-windows
+          path: packages/opencode/dist/opencode-windows*.zip
+          if-no-files-found: error
 
   build-desktop-windows:
     needs: version
@@ -82,3 +116,4 @@ jobs:
         with:
           name: ${{ matrix.settings.artifact }}
           path: packages/desktop/dist/*
+          if-no-files-found: error

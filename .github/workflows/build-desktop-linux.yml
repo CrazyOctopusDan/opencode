@@ -1,6 +1,6 @@
-# Fork dedicated Linux desktop packaging workflow.
+# Fork Linux desktop and standalone CLI packaging workflow.
 
-name: Build Desktop (Linux)
+name: Build Desktop and CLI (Linux)
 
 on:
   push:
@@ -26,6 +26,40 @@ jobs:
         run: |
           V=$(node -p "require('./packages/opencode/package.json').version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
+
+  build-cli-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      # Reuse upstream's cross-platform CLI build, including the embedded Web UI.
+      # OPENCODE_RELEASE stays unset: archives are uploaded here, never published.
+      - name: Build CLI
+        run: bun ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+          OPENCODE_CHANNEL: prod
+
+      - name: Package CLI
+        shell: bash
+        working-directory: packages/opencode
+        run: |
+          for target in opencode-linux-arm64 opencode-linux-x64 opencode-linux-x64-baseline opencode-linux-arm64-musl opencode-linux-x64-musl opencode-linux-x64-baseline-musl; do
+            test -s "dist/$target/bin/opencode"
+            tar -czf "dist/$target.tar.gz" -C "dist/$target/bin" .
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-linux
+          path: packages/opencode/dist/opencode-linux*.tar.gz
+          if-no-files-found: error
 
   build-desktop-linux:
     needs: version
@@ -96,3 +130,4 @@ jobs:
         with:
           name: ${{ matrix.settings.artifact }}
           path: packages/desktop/dist/*
+          if-no-files-found: error

@@ -121,7 +121,7 @@ git diff --check
 
 ## Bun and Packaging Workflow Audit
 
-Always run this after the merge conflict audit and before the final response.
+Always run this after the merge conflict audit and before the final response, including an already-up-to-date merge. An unchanged upstream workflow does not prove the fork delivery is complete.
 
 Check the required Bun version:
 
@@ -137,7 +137,9 @@ bun upgrade
 bun --version
 ```
 
-Check official packaging changes from upstream:
+Read `.github/workflows/publish.yml` from the exact source `dev` commit being merged (for example, `git show dev:.github/workflows/publish.yml`) and compare it with the fork workflows. Follow referenced build scripts and packaging configuration; do not infer deliverables from job names alone.
+
+Inspect the merged workflow files:
 
 ```bash
 sed -n '70,470p' .github/workflows/publish.yml
@@ -152,7 +154,21 @@ Compare these `publish.yml` areas against the fork workflows:
 - `build-electron` Windows/Linux matrix entries: host OS, `target`, `platform_flag`, `bun_install_flags`, Node version, apt dependencies, cache key shape, and `OPENCODE_CLI_ARTIFACT` / `RUST_TARGET` values.
 - desktop steps: `bun ./scripts/prepare.ts`, `bun run build`, `npx electron-builder ... --config electron-builder.config.ts`, timeout, `OPENCODE_CHANNEL`, and uploaded artifact path/name.
 
-Update `.github/workflows/build-desktop-windows.yml` or `.github/workflows/build-desktop-linux.yml` when the fork workflows drift from the official Windows/Linux packaging flow. Keep fork-specific differences intentional and small: `dev-sapphire` trigger, no release publishing, and no signing unless explicitly required.
+Update `.github/workflows/build-desktop-windows.yml` or `.github/workflows/build-desktop-linux.yml` when the fork workflows drift from the official Windows/Linux packaging flow or omit a required deliverable. Keep fork-specific differences intentional: `dev-sapphire` trigger, manual dispatch, no release publishing, and no signing unless explicitly required.
+
+The fork must produce **four independently downloadable artifact families**:
+
+| Workflow | Required outputs |
+| --- | --- |
+| `build-desktop-windows.yml` | Windows Desktop installers and standalone Windows CLI archives |
+| `build-desktop-linux.yml` | Linux Desktop installers and standalone Linux CLI archives |
+
+- Trace each family from build command through packaging to `upload-artifact`. Desktop Node sidecars, embedded server files, and CLI binaries downloaded only for a development channel do not count as standalone CLI delivery.
+- Preserve Desktop x64/arm64 targets. For CLI, preserve the Windows/Linux targets supported by the upstream traditional `packages/opencode/script/build.ts`, including baseline and Linux musl variants. The separate preview `packages/cli` executable is not a replacement for the TravelSky-enabled CLI unless its enterprise behavior has been explicitly migrated and verified.
+- Use the same version job output for CLI and Desktop and retain the metric tool-version audit. Reuse the upstream build script rather than duplicating its bundling logic. Its current full cross-platform build may run in each OS workflow; upload only that workflow's platform archives.
+- Keep CLI and Desktop jobs independently runnable after version resolution. Official-repository conditions such as `github.repository == 'anomalyco/opencode'` must not prevent fork build jobs from running.
+- Archive the complete CLI `bin` contents as Windows `.zip` and Linux `.tar.gz`, preserving Linux executable permissions. Check expected binaries before archiving and set `if-no-files-found: error` on all four artifact families; missing artifacts must fail the workflow.
+- Validate YAML, job dependencies, version propagation, target/archive names, and packaging commands. Report all four families separately. Distinguish static/local packaging checks from actual GitHub Actions build and downloaded-binary smoke tests; only claim CI delivery once those runs and artifacts have been checked.
 
 ## Metric Tool Version Audit
 
@@ -205,7 +221,7 @@ Report:
 - how `bun.lock` was handled;
 - baseline/checklist invariants preserved;
 - CLI and desktop files touched;
-- Bun version and packaging workflow audit results;
+- Bun version and packaging workflow audit results, with Windows Desktop, Windows CLI, Linux Desktop, and Linux CLI coverage reported separately;
 - metric payload `toolVersion` compared with the merged dev version, any correction, and its regression result;
 - verification commands and results;
 - any unresolved risk or skipped verification.
