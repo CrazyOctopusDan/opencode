@@ -114,6 +114,16 @@ const it = testEffect(
 )
 
 describe("session.system", () => {
+  test("routes GPT-6 model and API IDs to the Astra prompt before Codex", async () => {
+    const prompt = await Bun.file(new URL("../../src/session/prompt/gpt-astra.txt", import.meta.url)).text()
+    for (const input of [
+      { model: "GPT-6-codex", apiID: "1000004", title: "GPT-6" },
+      { model: "1000004", apiID: "gpt-6", title: "GPT-6" },
+    ]) {
+      expect(SystemPrompt.provider(model(input))).toEqual([prompt])
+    }
+  })
+
   test("routes company qwen model values to the qwen prompt even when api id is an internal database id", () => {
     const prompts = SystemPrompt.provider(
       model({

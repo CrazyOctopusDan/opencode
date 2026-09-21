@@ -8,6 +8,7 @@ import PROMPT_DEFAULT from "./prompt/default.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_GPT from "./prompt/gpt.txt"
+import PROMPT_ASTRA from "./prompt/gpt-astra.txt"
 import PROMPT_KIMI from "./prompt/kimi.txt"
 import PROMPT_META from "./prompt/meta.txt"
 
@@ -40,6 +41,7 @@ export function provider(model: Provider.Model) {
 
   if (includes(["gpt-4", "o1", "o3"])) return [PROMPT_BEAST]
   if (includes(["gpt"])) {
+    if (includes(["gpt-6"])) return [PROMPT_ASTRA]
     if (includes(["codex"])) {
       return [PROMPT_CODEX]
     }
