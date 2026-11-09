@@ -5,6 +5,9 @@ import { ServerConnection } from "../../services/server-connection"
 import { Config } from "../../config"
 import { resolve } from "@opencode/tui/config"
 import { Global } from "@opencode/util/global"
+import { OpenCode } from "@opencode/client"
+import { Service } from "@opencode/client/effect/service"
+import { ensureTravelSkyLogin } from "../../travelsky"
 
 export default Runtime.handler(Commands.commands.mini, (input) =>
   Effect.gen(function* () {
@@ -13,6 +16,9 @@ export default Runtime.handler(Commands.commands.mini, (input) =>
     const server = yield* ServerConnection.resolve({
       mismatch: "replace",
     })
+    yield* ensureTravelSkyLogin(
+      OpenCode.make({ baseUrl: server.endpoint.url, headers: Service.headers(server.endpoint) }),
+    )
     const config = yield* Config.Service
     const global = yield* Global.Service
     const resolved = resolve(yield* config.get(), { terminalSuspend: process.platform !== "win32" })

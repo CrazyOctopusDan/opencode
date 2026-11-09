@@ -14,6 +14,8 @@ import type {
 } from "../shared/ipc-contract"
 
 export type ElectronAPI = {
+  getTravelSkyCredential(server: string): Promise<{ username: string; password: string } | null>
+  setTravelSkyCredential(server: string, credential: { username: string; password: string } | null): Promise<boolean>
   awaitInitialization(): Promise<ServerReadyData>
   reconnectService(signal?: AbortSignal): Promise<ServerReadyData>
   onSidecarChanged(cb: (data: ServerReadyData) => void): () => void

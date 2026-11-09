@@ -1,6 +1,16 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "travelsky.title": "Sign in to TravelSky",
+  "travelsky.username": "Username",
+  "travelsky.password": "Password",
+  "travelsky.remember": "Remember my credentials on this computer",
+  "travelsky.rememberUnavailable": "Secure password storage is unavailable. Your password was not saved.",
+  "travelsky.checking": "Checking your company session…",
+  "travelsky.failed": "Could not sign in. Check your credentials and server connection, then try again.",
+  "travelsky.login": "Sign in",
+  "travelsky.logout": "Sign out of TravelSky",
+  "travelsky.retry": "Check connection again",
   "experiment.voiceCalls": "Voice calls",
   "voice.call": "Call",
   "voice.mute": "Mute",

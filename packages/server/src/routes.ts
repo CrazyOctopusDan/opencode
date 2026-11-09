@@ -9,6 +9,7 @@ import { Bus } from "@opencode/core/bus"
 import { EventLogger } from "@opencode/core/event-logger"
 import { FileSystemSearch } from "@opencode/core/filesystem/search"
 import { Credential } from "@opencode/core/credential"
+import { TravelSkyAuth } from "@opencode/core/travelsky/auth"
 import { Config } from "@opencode/core/config"
 import { PermissionSaved } from "@opencode/core/permission/saved"
 import { PtyTicket } from "@opencode/core/pty/ticket"
@@ -76,6 +77,7 @@ const applicationServiceNodes = [
   PtyTicket.node,
   PersistentPty.node,
   Credential.node,
+  TravelSkyAuth.node,
   WellKnown.node,
   ServerPairing.node,
   LocationServiceMap.node,
@@ -127,6 +129,7 @@ function makeRoutes<AuthError, AuthServices>(
     PersistentPty.node.replace(PersistentPty.configured(options.pty)),
     Bus.node.replace(Bus.configured({ persist: options.events?.persist })),
     App.node.replace(App.configured(options.app)),
+    TravelSkyAuth.node.replace(TravelSkyAuth.configured(options.travelsky)),
     ModelsDev.node.replace(ModelsDev.configured(options.models)),
     httpFetch.replace(fetchLayer(options.fetch)),
     ConsoleAccess.node.replace(ConsoleAccess.configured(options.console)),

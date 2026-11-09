@@ -18,6 +18,8 @@ const toArrayBuffer = (value: Uint8Array) =>
   value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer
 
 export const api: ElectronAPI = {
+  getTravelSkyCredential: (server) => invoke("TravelSkyCredentialGet", { server }),
+  setTravelSkyCredential: (server, credential) => invoke("TravelSkyCredentialSet", { server, credential }),
   awaitInitialization: () => invoke("AppAwaitInitialization"),
   reconnectService: (signal) => cancellable("AppReconnectService", undefined, signal),
   onSidecarChanged: (cb) => listen("SidecarChanged", (event) => cb({ url: event.url })),

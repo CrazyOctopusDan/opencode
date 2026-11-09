@@ -298,7 +298,10 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 files: ctx.payload.files,
                 agents: ctx.payload.agents,
                 skills: ctx.payload.skills,
-                metadata: ctx.payload.metadata,
+                metadata:
+                  ctx.request.headers["x-travelsky-client"] === "desktop"
+                    ? { ...ctx.payload.metadata, travelSkyClient: "desktop" }
+                    : ctx.payload.metadata,
                 delivery: ctx.payload.delivery,
                 resume: ctx.payload.resume,
               })

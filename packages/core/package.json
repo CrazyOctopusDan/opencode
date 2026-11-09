@@ -93,6 +93,7 @@
     "fast-check": "catalog:"
   },
   "dependencies": {
+    "sm-crypto": "0.4.0",
     "@ai-sdk/provider": "3.0.19",
     "@ai-sdk/provider-utils": "4.0.62",
     "@effect/platform-node": "catalog:",

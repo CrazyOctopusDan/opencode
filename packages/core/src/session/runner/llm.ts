@@ -32,6 +32,7 @@ import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
 import { PluginHooks } from "../../plugin/hooks.js"
+import { TravelSkyReporting } from "../../travelsky/reporting.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -56,6 +57,7 @@ const layer = Layer.effect(
     const hooks = yield* PluginHooks.Service
     const jobs = yield* Job.Service
     const title = yield* SessionTitle.Service
+    const metrics = yield* TravelSkyReporting.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
@@ -178,7 +180,9 @@ const layer = Layer.effect(
                 // The Session would go idle; a plugin may admit input to keep this execution working.
                 yield* restore(
                   SessionBackground.outstanding(jobs, store, sessionID).pipe(
-                    Effect.flatMap((background) => hooks.trigger("session", "experimental.idle", { sessionID, background })),
+                    Effect.flatMap((background) =>
+                      hooks.trigger("session", "experimental.idle", { sessionID, background }),
+                    ),
                   ),
                 )
                 if (!(yield* SessionInbox.has(db, sessionID, "input"))) return DrainResult.Complete()
@@ -212,7 +216,13 @@ const layer = Layer.effect(
       while (true) {
         const next = yield* advanceToStep()
         if (next._tag !== "Ready") return next
+        yield* metrics.begin({
+          sessionID,
+          providerID: next.context.model.ref.providerID,
+          messages: next.context.messages,
+        })
         continuing = yield* runStep(next.context, step)
+        if (!continuing) yield* metrics.complete(sessionID)
         stepped = true
         step++
         force = false
@@ -444,6 +454,7 @@ export const node = makeLocationNode({
   service: Service,
   layer,
   deps: [
+    TravelSkyReporting.node,
     Bus.node,
     LocationLifecycle.node,
     llmClient,

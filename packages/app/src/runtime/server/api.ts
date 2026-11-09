@@ -22,18 +22,23 @@ export function authFromToken(token: string | null) {
 /** `mediaRefs: false` reads stored media as inline bytes, for callers such as export that need self-contained messages. */
 export type ServerRequestOptions = MediaRequestOptions
 
-export function createApiForServer(input: { server: ServerConnection.HttpBase; fetch?: typeof globalThis.fetch }) {
+export function createApiForServer(input: {
+  server: ServerConnection.HttpBase
+  fetch?: typeof globalThis.fetch
+  client?: string
+}) {
+  const headers: Record<string, string> = {}
+
+  if (input.client === "desktop") headers["x-travelsky-client"] = "desktop"
+
+  if (input.server.password)
+    headers.Authorization = `Basic ${authTokenFromCredentials({ password: input.server.password })}`
+
   return withMediaRefs(
     OpenCode.make({
       baseUrl: input.server.url,
       fetch: input.fetch,
-      headers: input.server.password
-        ? {
-            Authorization: `Basic ${authTokenFromCredentials({
-              password: input.server.password,
-            })}`,
-          }
-        : undefined,
+      headers,
     }),
   )
 }

@@ -83,7 +83,13 @@ const unready = { url: "http://127.0.0.1:0" }
 
 function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerScope): ServerSDKBase {
   const platform = usePlatform()
-  const transport = createServerTransport({ http: ServerConnection.http(server) ?? unready, fetch: platform.fetch })
+
+  const transport = createServerTransport({
+    http: ServerConnection.http(server) ?? unready,
+    fetch: platform.fetch,
+    client: platform.platform,
+  })
+
   const media = createMediaCache(() => transport.api)
   const serverKey = ServerConnection.key(server)
   setMediaBlobLoader(serverKey, (uri) => media.load(uri))
@@ -228,15 +234,16 @@ export interface ServerTransport {
 export function createServerTransport(input: {
   http: ServerConnection.HttpBase
   fetch?: typeof globalThis.fetch
+  client?: string
 }): ServerTransport {
   const queue = createRequestQueue({ fetch: input.fetch ?? globalThis.fetch })
 
   // Keeps the endpoint as plain values: a plugin's endpoint can be a store proxy that already reads the next password,
   // and the client built here keeps the one it started with.
-  const build = (input: ServerConnection.HttpBase) => {
-    const http = { url: input.url, password: input.password }
+  const build = (connection: ServerConnection.HttpBase) => {
+    const http = { url: connection.url, password: connection.password }
 
-    return { http, api: createApiForServer({ server: http, fetch: queue.fetch }) }
+    return { http, api: createApiForServer({ server: http, fetch: queue.fetch, client: input.client }) }
   }
 
   const state = { current: build(input.http) }

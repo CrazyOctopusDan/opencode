@@ -1,0 +1,131 @@
+# Sapphire packaging uses the current CLI and Desktop build/pack entrypoints.
+name: Build Desktop and CLI (Windows)
+
+on:
+  push:
+    branches: [dev-sapphire]
+  workflow_dispatch:
+
+concurrency:
+  group: sapphire-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test "$VERSION" = "$(node -p "require('./packages/cli/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+      OPENCODE_CHANNEL: latest
+      BUN_COMPILE_RELEASE: bun-v1.4.4
+      OPENCODE_MODELS_SNAPSHOT: ${{ github.workspace }}/.cache/models-catalog/api.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - name: Verify metric payload release version
+        run: bun test test/travelsky/metric.test.ts
+        working-directory: packages/core
+      - name: Fetch models catalog
+        run: bun packages/core/script/update-models-snapshot.ts .cache/models-catalog/api.json
+      - name: Build CLI with upstream cross-platform builder
+        run: bun run build
+        working-directory: packages/cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Package complete standalone CLI directories
+        run: |
+          mkdir -p dist/archives
+          for target in windows-arm64 windows-x64 windows-x64-baseline; do
+            test -s "packages/cli/dist/cli-$target/bin/opencode.exe"
+            (cd "packages/cli/dist/cli-$target/bin" && zip -r "$GITHUB_WORKSPACE/dist/archives/opencode-$target.zip" .)
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-windows
+          path: dist/archives/opencode-windows*.zip
+          if-no-files-found: error
+      - name: Upload CLI inputs for Desktop
+        uses: actions/upload-artifact@v4
+        with:
+          name: sapphire-cli-bundle-windows
+          path: packages/cli/dist/cli-windows*
+          if-no-files-found: error
+
+  build-desktop:
+    needs: [version, build-cli]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            host: windows-latest
+            arch: x64
+            install: ""
+          - target: windows-arm64
+            host: windows-2025
+            arch: arm64
+            install: "--cpu=*"
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 90
+    env:
+      OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+      OPENCODE_CHANNEL: latest
+      OPENCODE_TARGET: ${{ matrix.target }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ matrix.install }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: sapphire-cli-bundle-windows
+          path: packages/cli/dist
+
+      - name: Build Desktop with bundled Sapphire CLI
+        run: bun run build
+        working-directory: packages/desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+      - name: Pack Desktop
+        run: bun run pack
+        working-directory: packages/desktop
+      # The upstream Windows pack step first produces app/, then wraps it in NSIS.
+      # Keep the intermediate app outside dist/desktop, which pack clears each time.
+      - name: Stage unsigned Windows app
+        run: cp -R dist/desktop/app "$RUNNER_TEMP/sapphire-desktop-app"
+      - name: Build unsigned Windows installer
+        run: bun run pack
+        working-directory: packages/desktop
+        env:
+          OPENCODE_DESKTOP_APP: ${{ runner.temp }}/sapphire-desktop-app
+      - name: Verify installers
+        run: |
+          test -s "dist/desktop/opencode-desktop-win-${{ matrix.arch }}.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-desktop-${{ matrix.target }}
+          path: |
+            dist/desktop/*.exe
+          if-no-files-found: error

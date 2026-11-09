@@ -34,6 +34,11 @@ export type FatalRendererErrorLog = {
 }
 
 type PlatformBase = {
+  /** Company passwords are stored only by the desktop OS credential encryption service. */
+  travelSkyCredentials?: {
+    get(server: string): Promise<{ username: string; password: string } | null>
+    set(server: string, credential: { username: string; password: string } | null): Promise<boolean>
+  }
   requestMicrophone?(): Promise<boolean>
   setVoiceCallActive?(active: boolean): Promise<void>
   /** App version */

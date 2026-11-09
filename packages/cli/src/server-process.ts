@@ -82,6 +82,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       if (options.mode === "service" && process.platform === "win32" && RetainedImage.installed(global.home))
         yield* RetainedImage.retain(global.cache, "service")
       const { start } = yield* Effect.promise(() => import("@opencode/server/process"))
+      const { settings } = yield* Effect.promise(() => import("@opencode/server/travelsky"))
       const environmentPassword = yield* Env.password
       // Keep the lease credential out of the environment inherited by tools.
       if (options.mode === "stdio") {
@@ -105,6 +106,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
             version: OPENCODE_VERSION,
             channel: OPENCODE_CHANNEL,
           },
+          travelsky: settings(process.env),
           hostname,
           port,
           cors: options.cors ?? config.cors,

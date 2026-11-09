@@ -12,6 +12,7 @@ import { eventHandlers } from "./ipc-handlers/events"
 import { pluginHandlers } from "./ipc-handlers/plugins"
 import { fileHandlers } from "./ipc-handlers/files"
 import { menuHandlers } from "./ipc-handlers/menu"
+import { travelSkyHandlers } from "./ipc-handlers/travelsky"
 import { storageHandlers } from "./ipc-handlers/storage"
 import { windowHandlers } from "./ipc-handlers/window"
 import { IpcPortHandoff, IpcServerProtocolLive } from "./ipc-transport"
@@ -29,6 +30,7 @@ const services = Layer.mergeAll(DesktopFiles.layer, Plugins.layer)
 const handlers = Layer.mergeAll(
   appHandlers,
   storageHandlers,
+  travelSkyHandlers,
   fileHandlers,
   windowHandlers,
   menuHandlers,

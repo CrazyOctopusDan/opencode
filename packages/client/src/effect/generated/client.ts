@@ -269,6 +269,10 @@ import type {
   ExperimentalArtifactsDeleteOutput,
   ExperimentalJobListInput,
   ExperimentalJobListOutput,
+  ExperimentalTravelskyStatusOutput,
+  ExperimentalTravelskyLoginInput,
+  ExperimentalTravelskyLoginOutput,
+  ExperimentalTravelskyLogoutOutput,
   ShellListInput,
   ShellListOutput,
   ShellCreateInput,
@@ -1715,6 +1719,31 @@ const EndpointExperimentalJobList = (raw: RawClient["server.experimental"]) => (
     ),
   )
 
+const EndpointExperimentalTravelskyStatus = (raw: RawClient["server.experimental"]) => () =>
+  preserveEffect<ExperimentalTravelskyStatusOutput>()(
+    raw["travelsky.status"]({}).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointExperimentalTravelskyLogin =
+  (raw: RawClient["server.experimental"]) => (input: ExperimentalTravelskyLoginInput) =>
+    preserveEffect<ExperimentalTravelskyLoginOutput>()(
+      raw["travelsky.login"]({ payload: { username: input["username"], password: input["password"] } }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((value) => value.data),
+      ),
+    )
+
+const EndpointExperimentalTravelskyLogout = (raw: RawClient["server.experimental"]) => () =>
+  preserveEffect<ExperimentalTravelskyLogoutOutput>()(
+    raw["travelsky.logout"]({}).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const adaptGroupExperimental = (raw: RawClient["server.experimental"]) => ({
   persistentPty: {
     read: EndpointExperimentalPersistentPtyRead(raw),
@@ -1745,6 +1774,11 @@ const adaptGroupExperimental = (raw: RawClient["server.experimental"]) => ({
     delete: EndpointExperimentalArtifactsDelete(raw),
   },
   job: { list: EndpointExperimentalJobList(raw) },
+  travelsky: {
+    status: EndpointExperimentalTravelskyStatus(raw),
+    login: EndpointExperimentalTravelskyLogin(raw),
+    logout: EndpointExperimentalTravelskyLogout(raw),
+  },
 })
 
 const EndpointShellList = (raw: RawClient["server.shell"]) => (input?: ShellListInput) =>

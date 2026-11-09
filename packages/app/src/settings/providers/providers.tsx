@@ -1,3 +1,4 @@
+import { useTravelSky } from "@/runtime/travelsky/gate"
 import { Button } from "@opencode/ui/button"
 import { Badge } from "@opencode/ui/badge"
 import { useDialog } from "@opencode/ui/context/dialog"
@@ -52,6 +53,7 @@ export const SettingsProviders: Component<{
   onSelectProvider?: (providerID: string) => void
   headerAction?: JSX.Element
 }> = (props) => {
+  const travelSky = useTravelSky()
   const dialog = useDialog()
   const language = useLanguage()
   const serverSdk = useServerSDK()
@@ -449,7 +451,14 @@ export const SettingsProviders: Component<{
             <h2 class="settings-tab-title">{language.t("settings.providers.title")}</h2>
             <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.providers.description")}</span>
           </div>
-          <div class="settings-tab-header-actions">{props.headerAction}</div>
+          <div class="settings-tab-header-actions">
+            <Show when={travelSky?.enabled()}>
+              <Button variant="ghost" onClick={() => travelSky?.logout()}>
+                {language.t("travelsky.logout")}
+              </Button>
+            </Show>
+            {props.headerAction}
+          </div>
         </div>
       </div>
 

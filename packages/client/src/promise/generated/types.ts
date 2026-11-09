@@ -349,6 +349,14 @@ export type JobStatus = "running" | "completed" | "error" | "cancelled"
 
 export type JobTime = { started: number; completed?: number }
 
+export type TravelSkyStatus = {
+  enabled: boolean
+  authenticated: boolean
+  username?: string
+  expiresAt?: number
+  message?: string
+}
+
 export type ReferenceGitSource = { type: "git"; repository: string; branch?: string }
 
 export type VcsBranch = { current?: string; default?: string }
@@ -4702,6 +4710,14 @@ export type ExperimentalJobListInput = {
 }
 
 export type ExperimentalJobListOutput = { data: Array<JobInfo> }["data"]
+
+export type ExperimentalTravelskyStatusOutput = { data: TravelSkyStatus }["data"]
+
+export type ExperimentalTravelskyLoginInput = { readonly username: string; readonly password: string }
+
+export type ExperimentalTravelskyLoginOutput = { data: TravelSkyStatus }["data"]
+
+export type ExperimentalTravelskyLogoutOutput = { data: TravelSkyStatus }["data"]
 
 export type ShellListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 

@@ -1,4 +1,7 @@
 import { Effect, Option } from "effect"
+import { OpenCode } from "@opencode/client"
+import { Service } from "@opencode/client/effect/service"
+import { ensureTravelSkyLogin } from "../../travelsky"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { ServerConnection } from "../../services/server-connection"
@@ -12,6 +15,13 @@ export default Runtime.handler(Commands.commands.run, (input) =>
       Effect.catch((error) => Effect.sync(() => reportRunError(input, error.message))),
     )
     if (!server) return
+    const admitted = yield* ensureTravelSkyLogin(
+      OpenCode.make({ baseUrl: server.endpoint.url, headers: Service.headers(server.endpoint) }),
+    ).pipe(
+      Effect.as(true),
+      Effect.catch((error) => Effect.sync(() => reportRunError(input, String(error))).pipe(Effect.as(false))),
+    )
+    if (!admitted) return
     // SIGINT and SIGTERM interrupt this fiber. Interruption waits for the run to cancel its Session and
     // jobs, so the private server and the process shut down only after that.
     yield* Effect.callback<void>((resume) => {

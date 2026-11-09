@@ -2504,6 +2504,36 @@ export type ExperimentalJobListOperation<E = never> = (
   input?: ExperimentalJobListInput,
 ) => Effect.Effect<ExperimentalJobListOutput, E>
 
+export type ExperimentalTravelskyStatusOutput = {
+  readonly enabled: boolean
+  readonly authenticated: boolean
+  readonly username?: string | undefined
+  readonly expiresAt?: number | undefined
+  readonly message?: string | undefined
+}
+export type ExperimentalTravelskyStatusOperation<E = never> = () => Effect.Effect<ExperimentalTravelskyStatusOutput, E>
+
+export type ExperimentalTravelskyLoginInput = { readonly username: string; readonly password: string }
+export type ExperimentalTravelskyLoginOutput = {
+  readonly enabled: boolean
+  readonly authenticated: boolean
+  readonly username?: string | undefined
+  readonly expiresAt?: number | undefined
+  readonly message?: string | undefined
+}
+export type ExperimentalTravelskyLoginOperation<E = never> = (
+  input: ExperimentalTravelskyLoginInput,
+) => Effect.Effect<ExperimentalTravelskyLoginOutput, E>
+
+export type ExperimentalTravelskyLogoutOutput = {
+  readonly enabled: boolean
+  readonly authenticated: boolean
+  readonly username?: string | undefined
+  readonly expiresAt?: number | undefined
+  readonly message?: string | undefined
+}
+export type ExperimentalTravelskyLogoutOperation<E = never> = () => Effect.Effect<ExperimentalTravelskyLogoutOutput, E>
+
 export interface ExperimentalApi<E = never> {
   readonly persistentPty: {
     readonly read: ExperimentalPersistentPtyReadOperation<E>
@@ -2534,6 +2564,11 @@ export interface ExperimentalApi<E = never> {
     readonly delete: ExperimentalArtifactsDeleteOperation<E>
   }
   readonly job: { readonly list: ExperimentalJobListOperation<E> }
+  readonly travelsky: {
+    readonly status: ExperimentalTravelskyStatusOperation<E>
+    readonly login: ExperimentalTravelskyLoginOperation<E>
+    readonly logout: ExperimentalTravelskyLogoutOperation<E>
+  }
 }
 
 export type ShellListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

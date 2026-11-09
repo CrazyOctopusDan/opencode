@@ -1,3 +1,4 @@
+import { TravelSkyGate } from "@/runtime/travelsky/gate"
 import { Show, type JSX, type ParentProps } from "solid-js"
 import { createSimpleContext } from "@opencode/ui/context"
 import { ServerConnection } from "./registry"
@@ -41,7 +42,7 @@ export function ServerProvider(props: ParentProps<{ conn: ServerConnection.Any; 
     >
       {(ctx) => (
         <context.provider conn={props.conn} ctx={ctx}>
-          {props.children}
+          <TravelSkyGate>{props.children}</TravelSkyGate>
         </context.provider>
       )}
     </Show>

@@ -1,6 +1,7 @@
 import { Database } from "@opencode/core/database/database"
 import { ModelsDev } from "@opencode/core/models-dev"
 import { PersistentPty } from "@opencode/core/persistent-pty"
+import { TravelSky } from "@opencode/schema/travelsky"
 import { Schema } from "effect"
 import type { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 
@@ -25,6 +26,7 @@ export const ServerOptions = Schema.Struct({
     }),
   ),
   models: Schema.optional(ModelsDev.Options),
+  travelsky: Schema.optional(TravelSky.Options),
   /**
    * Replaces `globalThis.fetch` for OpenCode's own HTTP requests: OpenCode Console config, model requests, web fetch
    * and search, well-known config, and remote MCP servers. Agent code in Code Mode keeps `globalThis.fetch`. For

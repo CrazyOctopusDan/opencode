@@ -1,0 +1,131 @@
+# Sapphire packaging uses the current CLI and Desktop build/pack entrypoints.
+name: Build Desktop and CLI (Linux)
+
+on:
+  push:
+    branches: [dev-sapphire]
+  workflow_dispatch:
+
+concurrency:
+  group: sapphire-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test "$VERSION" = "$(node -p "require('./packages/cli/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+      OPENCODE_CHANNEL: latest
+      BUN_COMPILE_RELEASE: bun-v1.4.4
+      OPENCODE_MODELS_SNAPSHOT: ${{ github.workspace }}/.cache/models-catalog/api.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - name: Verify metric payload release version
+        run: bun test test/travelsky/metric.test.ts
+        working-directory: packages/core
+      - name: Fetch models catalog
+        run: bun packages/core/script/update-models-snapshot.ts .cache/models-catalog/api.json
+      - name: Build CLI with upstream cross-platform builder
+        run: bun run build
+        working-directory: packages/cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Package complete standalone CLI directories
+        run: |
+          mkdir -p dist/archives
+          for target in linux-arm64 linux-x64 linux-x64-baseline linux-arm64-musl linux-x64-musl linux-x64-baseline-musl; do
+            test -s "packages/cli/dist/cli-$target/bin/opencode"
+            chmod +x "packages/cli/dist/cli-$target/bin/opencode"
+            tar -czf "dist/archives/opencode-$target.tar.gz" -C "packages/cli/dist/cli-$target/bin" .
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-linux
+          path: dist/archives/opencode-linux*.tar.gz
+          if-no-files-found: error
+      - name: Upload CLI inputs for Desktop
+        uses: actions/upload-artifact@v4
+        with:
+          name: sapphire-cli-bundle-linux
+          path: packages/cli/dist/cli-linux*
+          if-no-files-found: error
+
+  build-desktop:
+    needs: [version, build-cli]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            host: ubuntu-24.04
+            arch: x64
+            install: ""
+          - target: linux-arm64
+            host: ubuntu-24.04-arm
+            arch: arm64
+            install: ""
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 90
+    env:
+      OPENCODE_VERSION: ${{ needs.version.outputs.version }}
+      OPENCODE_CHANNEL: latest
+      OPENCODE_TARGET: ${{ matrix.target }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ matrix.install }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: sapphire-cli-bundle-linux
+          path: packages/cli/dist
+      - name: Install packaging dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+      - name: Restore bundled CLI executable permissions
+        run: chmod +x packages/cli/dist/cli-linux-*/bin/opencode
+      - name: Build Desktop with bundled Sapphire CLI
+        run: bun run build
+        working-directory: packages/desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+      - name: Pack Desktop
+        run: bun run pack
+        working-directory: packages/desktop
+
+      - name: Verify installers
+        run: |
+          for extension in AppImage deb rpm; do
+            test -s "dist/desktop/opencode-desktop-linux-${{ matrix.arch }}.$extension"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-desktop-${{ matrix.target }}
+          path: |
+            dist/desktop/*.AppImage
+            dist/desktop/*.deb
+            dist/desktop/*.rpm
+          if-no-files-found: error

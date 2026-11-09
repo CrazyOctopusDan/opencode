@@ -1,4 +1,5 @@
 import { PersistentPty } from "@opencode/core/persistent-pty"
+import { TravelSkyAuth } from "@opencode/core/travelsky/auth"
 import { PtyTicket } from "@opencode/core/pty/ticket"
 import {
   ForbiddenError,
@@ -33,8 +34,22 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
     const job = yield* makeJob
     const mediaGet = yield* makeMediaGet
     const schedule = yield* makeSchedule
+    const travelsky = yield* TravelSkyAuth.Service
 
     return handlers
+      .handle("travelsky.status", () => travelsky.snapshot(true).pipe(Effect.map((value) => ({ data: value.status }))))
+      .handle("travelsky.login", (ctx) =>
+        travelsky.login(ctx.payload).pipe(
+          Effect.map((data) => ({ data })),
+          Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
+        ),
+      )
+      .handle("travelsky.logout", () =>
+        travelsky.logout().pipe(
+          Effect.andThen(travelsky.snapshot()),
+          Effect.map((value) => ({ data: value.status })),
+        ),
+      )
       .handleRaw("media.get", (ctx) => mediaGet(ctx.params.hash, ctx.request))
       .handle("job.list", (ctx) => job.list(ctx.query))
       .handle("artifacts.providers", (ctx) => artifact.providers(ctx.query, ctx.request))

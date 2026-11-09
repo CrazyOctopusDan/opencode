@@ -16,16 +16,19 @@ export default Runtime.handler(
   ),
 )
 
-const logout = Effect.fn("cli.auth.logout.run")(function* (input: {
-  target?: string
-  credential?: string
-}) {
+const logout = Effect.fn("cli.auth.logout.run")(function* (input: { target?: string; credential?: string }) {
+  const client = yield* createClient()
+  const status = yield* request((signal) => client.experimental.travelsky.status({ signal }))
+  if (status.enabled) {
+    yield* request((signal) => client.experimental.travelsky.logout({ signal }))
+    outro("Logged out of TravelSky")
+    return
+  }
   if (!input.target)
     yield* requireInteractive("Pass an integration ID or name when running without an interactive terminal")
   if (!input.credential)
     yield* requireInteractive("Pass a credential ID or label when running without an interactive terminal")
   intro("Log out of an account")
-  const client = yield* createClient()
   const integrations = yield* loadIntegrations(client)
   const integration = yield* chooseIntegration(integrations, input.target)
   const credentialID = yield* chooseCredential(integration, "log out", input.credential)

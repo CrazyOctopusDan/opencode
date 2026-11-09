@@ -6,6 +6,7 @@ import { Runtime } from "../../../framework/runtime"
 import { selectIntegration, type IntegrationChoice } from "../../../ui/integration-picker"
 import { handlePromptErrors, openUrl, prompt, requireInteractive } from "../../../ui/prompt"
 import { errorMessage } from "../../../util/error"
+import { ensureTravelSkyLogin } from "../../../travelsky"
 import { answerForm, secret } from "./form"
 import {
   createClient,
@@ -43,10 +44,11 @@ const login = Effect.fn("cli.auth.login.run")(function* (input: {
   method?: string
   answer?: ReadonlyArray<string>
 }) {
+  const client = yield* createClient()
+  if (yield* ensureTravelSkyLogin(client, true)) return
   if (!input.target)
     yield* requireInteractive("Pass an integration ID or name when running without an interactive terminal")
   intro("Connect an integration")
-  const client = yield* createClient()
   const integration = yield* findIntegration(client, input.target)
   const methods = connectMethods(integration)
   if (methods.length === 0) yield* Effect.fail(new Error(`${integration.name} has no interactive login methods`))
@@ -62,7 +64,9 @@ const findIntegration = Effect.fn("cli.auth.login.integration")(function* (clien
     if (protocol === "http:" || protocol === "https:") {
       const progress = spinner()
       progress.start("Discovering authentication provider...")
-      yield* request((signal) => client.experimental.integration.wellknown.add({ url: target, location }, { signal })).pipe(
+      yield* request((signal) =>
+        client.experimental.integration.wellknown.add({ url: target, location }, { signal }),
+      ).pipe(
         Effect.tap(() => Effect.sync(() => progress.stop("Authentication provider discovered"))),
         Effect.tapCause(() => Effect.sync(() => progress.stop("Discovery failed", 1))),
       )

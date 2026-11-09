@@ -271,6 +271,10 @@ import type {
   ExperimentalArtifactsViewOutput,
   ExperimentalJobListInput,
   ExperimentalJobListOutput,
+  ExperimentalTravelskyStatusOutput,
+  ExperimentalTravelskyLoginInput,
+  ExperimentalTravelskyLoginOutput,
+  ExperimentalTravelskyLogoutOutput,
   ShellListInput,
   ShellListOutput,
   ShellCreateInput,
@@ -1697,6 +1701,42 @@ export function make(options: ClientOptions) {
               },
               successStatus: 200,
               declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
+      travelsky: {
+        status: (requestOptions?: RequestOptions) =>
+          request<{ readonly data: ExperimentalTravelskyStatusOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/travelsky/status`,
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        login: (input: ExperimentalTravelskyLoginInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: ExperimentalTravelskyLoginOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/travelsky/login`,
+              body: { username: input["username"], password: input["password"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        logout: (requestOptions?: RequestOptions) =>
+          request<{ readonly data: ExperimentalTravelskyLogoutOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/travelsky/logout`,
+              successStatus: 200,
+              declaredStatuses: [400, 401],
               empty: false,
             },
             requestOptions,
