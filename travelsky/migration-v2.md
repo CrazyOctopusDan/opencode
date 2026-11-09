@@ -1,5 +1,7 @@
 # Sapphire migration to OpenCode v2
 
+This is the historical migration and verification record. For subsequent upstream updates, use the maintained [enterprise baseline](changes-baseline.md) and [merge-sapphire skill](../.agents/skills/merge-sapphire/SKILL.md). The versions and test counts below describe this migration, not requirements to freeze future updates.
+
 ## Baseline and scope
 
 - Source: `dev` at `76ff9a6ab25fca4b8f0f5c43e4ef12bd0c10cc3e`, OpenCode 2.2.5.
