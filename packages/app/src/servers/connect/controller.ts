@@ -37,7 +37,10 @@ export function createServerConnectController(options: ServerConnectControllerOp
   const check = useCheckServerHealth()
   // Shared with the scanner, so a retry after a failed check reuses the token of a spent one-time code.
   const redeem = useRedeemPairing()
-  const initial = startServerConnect(options.target, cameraSupport(platform.platform))
+  const initial = startServerConnect(
+    options.target,
+    options.surface === "screen" ? "none" : cameraSupport(platform.platform),
+  )
   const [machine, setMachine] = createSignal(initial.state)
   let timer: ReturnType<typeof setTimeout> | undefined
   let cameraTimer: ReturnType<typeof setTimeout> | undefined

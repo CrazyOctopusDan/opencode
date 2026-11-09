@@ -8,7 +8,7 @@ import { isServerUnauthorized } from "@/runtime/server/health-machine"
 import { SessionPanelFrame, SessionRouteFrame } from "@/session/session-frame"
 import { ServerSignedOutPanel } from "@/session/server-unavailable-panel"
 import { LayoutProvider } from "@/shell/state/layout"
-import { SettingsSurfaceProvider } from "@/settings/surface"
+import { SettingsSurfaceProvider, useSettingsSurface } from "@/settings/surface"
 import Shell from "@/shell/shell"
 import { requireServerKey } from "./session"
 import { PluginAttachment } from "@/runtime/plugin/root"
@@ -124,10 +124,25 @@ function AppLayout(props: ParentProps) {
       <LayoutProvider>
         <SettingsSurfaceProvider>
           <PluginAttachment>
-            <Shell>{props.children}</Shell>
+            <AuthenticatedShell>{props.children}</AuthenticatedShell>
           </PluginAttachment>
         </SettingsSurfaceProvider>
       </LayoutProvider>
+    </Show>
+  )
+}
+
+function AuthenticatedShell(props: ParentProps) {
+  const settings = useSettingsSurface()
+  const connection = createMemo(() => settings.server()?.connection)
+
+  return (
+    <Show when={connection()} keyed fallback={<Shell>{props.children}</Shell>}>
+      {(connection) => (
+        <ServerProvider conn={connection} signedOut={<Shell>{props.children}</Shell>}>
+          <Shell>{props.children}</Shell>
+        </ServerProvider>
+      )}
     </Show>
   )
 }

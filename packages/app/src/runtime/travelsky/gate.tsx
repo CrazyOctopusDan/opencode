@@ -10,11 +10,21 @@ import { useServer } from "@/runtime/server/current"
 import { showToast } from "@/shell/notifications/toast"
 import { transition, view, type Event, type State } from "./machine"
 
-const context = createContext<{ enabled: () => boolean; logout: () => void }>()
+const context = createContext<{ server: string; enabled: () => boolean; logout: () => void }>()
 
 export const useTravelSky = () => useContext(context)
 
 export function TravelSkyGate(props: ParentProps) {
+  const server = useServer()
+  const parent = useTravelSky()
+
+  // Server-bound route providers below the shell reuse its gate and recovery attempt.
+  if (parent?.server === server.key) return props.children
+
+  return <TravelSkyLogin>{props.children}</TravelSkyLogin>
+}
+
+function TravelSkyLogin(props: ParentProps) {
   const server = useServer()
   const platform = usePlatform()
   const language = useLanguage()
@@ -148,11 +158,11 @@ export function TravelSkyGate(props: ParentProps) {
   })
 
   return (
-    <context.Provider value={{ enabled: () => state().enabled, logout }}>
+    <context.Provider value={{ server: server.key, enabled: () => state().enabled, logout }}>
       <Show
         when={state().allowed}
         fallback={
-          <main class="flex h-full min-h-0 items-center justify-center p-6">
+          <main class="flex h-full w-full min-h-0 items-center justify-center p-6">
             <form
               class="flex w-full max-w-sm flex-col gap-4"
               onSubmit={(event) => {
