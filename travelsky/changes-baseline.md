@@ -2,7 +2,7 @@
 
 本文件是后续上游同步的当前行为基线，替代 v1 的逐文件保护清单。采用最新 OpenCode 架构，在原生扩展点移植企业功能；允许重构或替换实现，不要求旧目录、Provider 层级或 runner 保持不变。新增产品行为仍以用户需求为准。
 
-本次核对：2026-11-09，代码 `8b97d1b736`；上游 `dev` 基点 `76ff9a6ab25fca4b8f0f5c43e4ef12bd0c10cc3e`（2.2.5）。这些是历史定位，不是下次合并的固定版本。迁移过程及当时验证结果见 [migration-v2.md](migration-v2.md)，合并流程见 [merge-sapphire](../.agents/skills/merge-sapphire/SKILL.md)。
+本次核对：2026-11-12；合入本地 `dev` 基点 `101776024c`（2.2.7）。这些是历史定位，不是下次合并的固定版本。迁移过程及当时验证结果见 [migration-v2.md](migration-v2.md)，合并流程见 [merge-sapphire](../.agents/skills/merge-sapphire/SKILL.md)。
 
 ## 架构与认证边界
 
@@ -32,7 +32,7 @@
 - 文件统计采用最终差异，撤销的改动不重复累计。覆盖 Git 与非 Git 目录，工具元数据作为适用回退；临时快照不在用户目录创建 `.git` 或改写用户索引。行数为非负整数。
 - `record/saveGeneration` 返回 qaid 且存在文件变化时，再调用 `record/addAdoption`。同主机、同 Cookie；网络超时或上报失败不阻塞正常会话完成。不把客户端去重描述为后端恰好一次交付保证。
 - CLI/Desktop 分别使用 `opencode-cli` / `opencode-desktop`；共享服务时保留 prompt 的 Desktop 来源。`ideVersion`、`adoptedContent` 保持空字符串。
-- 实际 payload 的 `toolVersion` 必须等于合入上游的发布短版本，与合并后根/Core/CLI 版本一致，最多 15 字符、不带开发后缀。当前为 2.2.5；以后随上游更新，不能固化。对应回归在 `packages/core/test/travelsky/metric.test.ts`。
+- 实际 payload 的 `toolVersion` 必须等于合入上游的发布短版本，与合并后根/Core/CLI 版本一致，最多 15 字符、不带开发后缀。当前为 2.2.7；以后随上游更新，不能固化。对应回归在 `packages/core/test/travelsky/metric.test.ts`。
 
 ## Windows / Linux 交付
 
@@ -40,11 +40,13 @@
 
 | Workflow | 独立可下载的交付物 |
 | --- | --- |
-| `.github/workflows/build-desktop-windows.yml` | Desktop x64/arm64 NSIS 安装程序；CLI arm64/x64/x64-baseline ZIP |
+| `.github/workflows/build-desktop-windows.yml` | Desktop x64/arm64 NSIS 安装程序及含 `win-unpacked/` 的解压版 ZIP；CLI arm64/x64/x64-baseline ZIP |
 | `.github/workflows/build-desktop-linux.yml` | Desktop x64/arm64 AppImage、deb、rpm；CLI arm64/x64/x64-baseline 及对应 musl tar.gz |
 
 - CLI/Desktop 使用同一发布版本，Desktop 构建依赖匹配的 CLI 产物。复用上游 builder，CLI 归档包含完整 `bin` 内容，Linux 保留可执行权限；缺失任一要求产物必须失败。
-- 保留 `dev-sapphire` push / 手动触发、不签名、不发布 release。Windows 当前先生成 app，再包装 NSIS；上游改变后需语义适配。
+- 保留 `dev-sapphire` push / 手动触发、不签名、不发布 release。Windows 当前先生成 app，再包装 NSIS；解压版与 NSIS 使用同一 app，不另行编译。上游改变后需语义适配。
+- Windows 使用可选择目录的安装向导，默认按 app ID 隔离渠道，保留旧 `@opencodedesktop` 共享目录迁移。目录向导重入时保留迁移状态；进程检测排除同一路径的安装器实例和当前渠道卸载程序，仍关闭安装目录中的应用进程。
+- 选择 D 盘只改变程序位置。Desktop 的用户数据、复制的 CLI、更新器缓存和 Windows 临时文件仍遵循现有用户目录/系统配置；解压版不承诺便携数据目录或零 C 盘占用。
 - Bun/Node 要求从源提交和构建配置读取，不在 skill 内永久固定版本。`bun.lock` 以上游图为起点，保留企业 manifest 需要的依赖，目前是 Core 的 `sm-crypto` 及其传递依赖。
 
 ## 验证入口与完成标准
@@ -62,6 +64,15 @@
 合并仍需验证关联的上游路径；上述入口不是所有变更通用的测试全集。UI 验收覆盖首次未登录、登录成功、退出/过期、连接恢复、输入与按钮宽度以及顶部栏显隐。涉及登录页面时不能仅凭状态机测试宣称界面通过。
 
 本地检查、模拟 Tempo 的浏览器测试、原生系统密钥环、真实公司接口、Windows/Linux CI 及下载产物启动验收分别记录。历史通过数量不作为后续通过证明；当前尚未完成的真实环境验收见迁移记录。仅改文档时检查路径、命令和链接，不必重跑整套产品测试。
+
+## 2026-11-12 合并验证
+
+- 合并保留 `runStep` 新增的 `interruption` 参数及企业统计调用；企业统计从上游已移除的 `App.Metadata` 迁移到 `App.Service`。实际统计版本及测试对齐 2.2.7，`ideVersion` 仍为空。
+- 以 dev 锁文件为起点，用 Bun 1.4.4 重算，仅增加企业需要的 `sm-crypto` / `jsbn`；`bun install --frozen-lockfile` 完整安装及 postinstall 通过；上游遗留的未应用 patch 警告仍存在。
+- 相对 `dev` 的本次增量 `git diff --check dev` 通过；整个合并相对旧 Sapphire 的检查仍报告 dev 自带测试空白及依赖 patch 上下文缩进，未重写上游内容。
+- 从 `packages/client` 运行 `bun run generate` 重建合并后的客户端；根目录 `bun run check` 通过。Core 企业/会话 309 项、CLI 3 项、Server 1 项、App 状态机 39 项、Desktop 配置/凭据 12 项通过。
+- 用安装的 app-builder-lib 模板和 NSIS 编译器，在 macOS 上编译 x64/arm64 的安装/卸载四种组合通过；载荷使用测试文件，仅证明脚本可编译。4 项 Windows 行为测试本机跳过，已加入 Windows 打包工作流；实际 Windows/Linux 产物、云桌面、原生密钥环、公司服务及 UI 未重新验收。
+- 用户报告的首次安装“无法抽取 Uninstall OpenCode”尚无完整错误路径及现场复现，不能确认是文件占用、权限、临时盘空间或其他原因；此次没有绕过卸载文件写入失败。可先使用解压版部署，再在 Windows 收集完整报错定位。
 
 ## 已替换的旧约束
 

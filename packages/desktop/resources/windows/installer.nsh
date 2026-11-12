@@ -3,14 +3,17 @@
 ; directory and each channel's installer and uninstaller replaced or deleted the others' files.
 ; Each channel now installs into a directory named after its app ID, like its data directory.
 ; Only the installer moves, and NSIS rejects a variable that the uninstaller build never sets.
+; Keep the channel directory stable when switching from one-click to the directory wizard.
+!undef APP_FILENAME
+!define APP_FILENAME "${APP_ID}"
+
 !ifndef BUILD_UNINSTALLER
   Var /GLOBAL sharedInstallDir
 !endif
 
 !macro customInit
-  StrCpy $sharedInstallDir ""
   ${StdUtils.GetParentPath} $R0 $INSTDIR
-  ${If} $INSTDIR == "$R0\${APP_FILENAME}"
+  ${If} $INSTDIR == "$R0\@opencodedesktop"
     ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
       StrCpy $sharedInstallDir $INSTDIR
       ; The old uninstaller would delete every channel's files from the shared directory, so the
@@ -23,6 +26,16 @@
     ${EndIf}
     StrCpy $INSTDIR "$R0\${APP_ID}"
   ${EndIf}
+!macroend
+
+!macro customPageAfterChangeDir
+  ; The install-mode page reloads the old path after .onInit; migrate it before extraction too.
+  !undef MUI_PAGE_CUSTOMFUNCTION_PRE
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE prepareInstallDirectory
+  Function prepareInstallDirectory
+    !insertmacro customInit
+    Call instFilesPre
+  FunctionEnd
 !macroend
 
 !macro customInstall
@@ -89,6 +102,9 @@
             System::Call "kernel32::QueryFullProcessImageNameW(p R4, i 0, w .R5, *i ${NSIS_MAX_STRLEN}) i .R6"
             System::Call "kernel32::CloseHandle(p R4)"
             ${If} $R6 != 0
+            ${AndIf} $R5 != $EXEPATH
+            ${AndIf} $R5 != "$INSTDIR\${UNINSTALL_FILENAME}"
+              ; NSIS may have another instance of its installer/uninstaller running from this directory.
               ; A channel leaving the shared directory stops its own app there, but not the others'.
               StrCpy $2 0
               !ifndef BUILD_UNINSTALLER
@@ -190,7 +206,7 @@
         !insertmacro removeStagedUpdates $R1
         ; Stage beside the directory the install will use, which customInit moves out of the shared one.
         ${StdUtils.GetParentPath} $R5 $R1
-        ${If} $R1 == "$R5\${APP_FILENAME}"
+        ${If} $R1 == "$R5\@opencodedesktop"
           StrCpy $R1 "$R5\${APP_ID}"
           !insertmacro removeStagedUpdates $R1
         ${EndIf}

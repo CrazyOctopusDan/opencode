@@ -5,7 +5,7 @@ import type { FileDiff } from "@opencode/schema/file-diff"
 import type { SessionMessage } from "@opencode/schema/session-message"
 
 // The company backend accepts at most 15 characters and does not accept development suffixes.
-export const toolVersion = "2.2.5"
+export const toolVersion = "2.2.7"
 
 export function build(input: {
   sessionID: string

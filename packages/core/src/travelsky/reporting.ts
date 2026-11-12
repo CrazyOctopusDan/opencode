@@ -39,7 +39,7 @@ const layer = Layer.effect(
     const fs = yield* FileSystem.FileSystem
     const scope = yield* Scope.Scope
     const kv = yield* KV.Service
-    const app = yield* App.Metadata
+    const app = yield* App.Service
     const started = new Map<SessionSchema.ID, { parent: SessionMessage.ID; tree?: Git.TreeID }>()
     // The native snapshot service intentionally only handles Git projects. Keep metric-only snapshots private
     // for plain directories, without creating a .git directory or altering the user's index.

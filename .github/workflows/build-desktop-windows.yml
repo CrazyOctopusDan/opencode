@@ -103,6 +103,10 @@ jobs:
           name: sapphire-cli-bundle-windows
           path: packages/cli/dist
 
+      - name: Verify Windows installer contracts
+        run: bun test electron-builder.config.test.ts script/windows-installer.test.ts
+        working-directory: packages/desktop
+
       - name: Build Desktop with bundled Sapphire CLI
         run: bun run build
         working-directory: packages/desktop
@@ -114,12 +118,15 @@ jobs:
       # The upstream Windows pack step first produces app/, then wraps it in NSIS.
       # Keep the intermediate app outside dist/desktop, which pack clears each time.
       - name: Stage unsigned Windows app
-        run: cp -R dist/desktop/app "$RUNNER_TEMP/sapphire-desktop-app"
+        run: cp -R dist/desktop/app "$RUNNER_TEMP/win-unpacked"
+      - name: Archive unpacked Desktop
+        shell: pwsh
+        run: Compress-Archive -Path "$env:RUNNER_TEMP/win-unpacked" -DestinationPath "$env:RUNNER_TEMP/opencode-desktop-windows-${{ matrix.arch }}-unpacked.zip"
       - name: Build unsigned Windows installer
         run: bun run pack
         working-directory: packages/desktop
         env:
-          OPENCODE_DESKTOP_APP: ${{ runner.temp }}/sapphire-desktop-app
+          OPENCODE_DESKTOP_APP: ${{ runner.temp }}/win-unpacked
       - name: Verify installers
         run: |
           test -s "dist/desktop/opencode-desktop-win-${{ matrix.arch }}.exe"
@@ -128,4 +135,9 @@ jobs:
           name: opencode-desktop-${{ matrix.target }}
           path: |
             dist/desktop/*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-desktop-${{ matrix.target }}-unpacked
+          path: ${{ runner.temp }}/opencode-desktop-windows-${{ matrix.arch }}-unpacked.zip
           if-no-files-found: error

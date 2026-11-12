@@ -19,6 +19,7 @@ import { TempoApi } from "../../src/travelsky/api"
 import { TravelSkyReporting } from "../../src/travelsky/reporting"
 import { tempLocationLayer } from "../fixture/location"
 import { testEffect } from "../lib/effect"
+import pkg from "../../package.json"
 
 const reports: Array<{ url: string; body: Record<string, unknown>; cookie?: string }> = []
 const http = HttpClient.make((request) => {
@@ -91,7 +92,7 @@ it.live("reports one final diff for a plain directory and does not create a user
         project_id: location.project.id,
         slug: "metric",
         directory: location.directory,
-        version: "2.2.5",
+        version: pkg.version,
       })
       .run()
       .pipe(Effect.orDie)
@@ -125,7 +126,7 @@ it.live("reports one final diff for a plain directory and does not create a user
     expect(reports).toHaveLength(2)
     expect(reports[0]).toMatchObject({
       url: "https://tempo.example/ai/data/api/record/saveGeneration",
-      body: { generatedLines: 2, adoptedLines: 2, responseContent: "Done", toolVersion: "2.2.5" },
+      body: { generatedLines: 2, adoptedLines: 2, responseContent: "Done", toolVersion: pkg.version },
       cookie: "crowd.token_key=token",
     })
     expect(reports[1]).toMatchObject({

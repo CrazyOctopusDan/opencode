@@ -56,7 +56,7 @@ LangString appClosing \${LANG_ENGLISH} "closing"
 LangString appCannotBeClosed \${LANG_ENGLISH} "cannot close"
 !define APP_EXECUTABLE_FILENAME "OpenCode.exe"
 !define APP_ID "ai.opencode.desktop"
-!define APP_FILENAME "@opencodedesktop"
+!define APP_FILENAME "OpenCode"
 !define UNINSTALL_FILENAME "Uninstall OpenCode.exe"
 !define UNINSTALL_REGISTRY_KEY "${uninstallKey}"
 !define SHORTCUT_NAME "OpenCode Installer Test"
@@ -243,6 +243,14 @@ const directoryCases = [
     uninstallKept: false,
   },
   {
+    name: "an existing channel directory stays where it is",
+    from: "ai.opencode.desktop",
+    shared: ["OpenCode.exe", "Uninstall OpenCode.exe"],
+    expected: "ai.opencode.desktop",
+    left: ["OpenCode.exe", "Uninstall OpenCode.exe"],
+    uninstallKept: true,
+  },
+  {
     name: "an install elsewhere stays where it is",
     from: "custom",
     shared: ["OpenCode.exe", "Uninstall OpenCode.exe"],
@@ -262,6 +270,8 @@ windows(
       const exe = await installer.compile(
         "directory",
         `  !insertmacro customInit
+  ; The assisted wizard invokes initialization again before extraction.
+  !insertmacro customInit
   FileOpen $0 "$EXEDIR\\instdir.txt" w
   FileWrite $0 $INSTDIR
   FileClose $0
@@ -308,7 +318,17 @@ windows(
     const ping = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "PING.EXE")
 
     try {
-      const exe = await installer.compile("running", "  !insertmacro customCheckAppRunning")
+      const exe = await installer.compile(
+        "running",
+        `  \${StdUtils.TestParameter} $R0 "hold"
+  \${If} $R0 == "true"
+    FileOpen $0 "$EXEDIR\\ready.txt" w
+    FileClose $0
+    Sleep 30000
+    Quit
+  \${EndIf}
+  !insertmacro customCheckAppRunning`,
+      )
 
       for (const item of runningCases) {
         const root = path.join(installer.dir, item.name.replaceAll(" ", "-"))
@@ -319,6 +339,8 @@ windows(
         await mkdir(sibling, { recursive: true })
         await copyFile(ping, path.join(install, "resources", "standin.exe"))
         await copyFile(ping, path.join(sibling, "standin.exe"))
+        await copyFile(ping, path.join(install, "Uninstall OpenCode.exe"))
+        await copyFile(exe, path.join(install, "setup.exe"))
 
         const app = Bun.spawn([path.join(install, "resources", "standin.exe"), "-n", String(item.pings), "127.0.0.1"], {
           stdout: "ignore",
@@ -326,14 +348,31 @@ windows(
 
         const other = Bun.spawn([path.join(sibling, "standin.exe"), "-n", "30", "127.0.0.1"], { stdout: "ignore" })
 
+        const uninstaller = Bun.spawn([path.join(install, "Uninstall OpenCode.exe"), "-n", "30", "127.0.0.1"], {
+          stdout: "ignore",
+        })
+        const parent = Bun.spawn([path.join(install, "setup.exe"), "--hold"], { stdout: "ignore" })
+
         try {
-          expect((await installer.run([exe, ...item.args, `/D=${install}`])).code, item.name).toBe(0)
+          const deadline = Date.now() + 10_000
+          while (!(await Bun.file(path.join(install, "ready.txt")).exists())) {
+            if (Date.now() >= deadline) throw new Error("Installer parent did not start")
+            await Bun.sleep(10)
+          }
+          expect(
+            (await installer.run([path.join(install, "setup.exe"), ...item.args, `/D=${install}`])).code,
+            item.name,
+          ).toBe(0)
+          expect(parent.exitCode, item.name).toBeNull()
+          expect(uninstaller.exitCode, item.name).toBeNull()
           expect(other.exitCode, item.name).toBeNull()
           expect(await app.exited, item.name).toBe(item.exitCode)
         } finally {
           app.kill()
           other.kill()
-          await Promise.all([app.exited, other.exited])
+          parent.kill()
+          uninstaller.kill()
+          await Promise.all([app.exited, other.exited, parent.exited, uninstaller.exited])
         }
       }
     } finally {

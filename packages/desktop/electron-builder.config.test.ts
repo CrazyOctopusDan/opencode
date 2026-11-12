@@ -122,6 +122,8 @@ test("shared packaging defaults", async () => {
   expect(config.dmg?.sign).not.toBe(true)
   expect(config.mac?.extendInfo?.NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac).toBe(true)
   const include = path.join(import.meta.dirname, "resources/windows/installer.nsh")
+  expect(config.nsis?.oneClick).toBe(false)
+  expect(config.nsis?.allowToChangeInstallationDirectory).toBe(true)
   expect(config.nsis?.include).toBe(include)
   expect(await Bun.file(include).exists()).toBe(true)
   expect(config.files).toContain("!resources/opencode-cli*")

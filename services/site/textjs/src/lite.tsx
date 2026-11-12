@@ -14,11 +14,13 @@ import { createDemoClient } from "../.upstream/opencode-console/lib/demo"
 // `new URL("@textjs/core/yoga.wasm", import.meta.url)`, so load it from next to the chunks.
 declare const __TEXTJS_YOGA__: string
 
-export async function start(options: { onExit?: () => void } = {}) {
+export async function start(options: { away?: () => boolean; onExit?: () => void } = {}) {
   await initYoga({ wasm: new URL(__TEXTJS_YOGA__, import.meta.url) })
   // Keys reach the app only once the visitor clicks the page to come back from DevTools, and never
   // while they type in one of its fields, so the site's own shortcuts keep working until then.
-  const input = createHostInput()
+  // `away` covers the visitor who came back while Lite downloaded: they left the page before it
+  // started listening, so its next press is the click back from DevTools.
+  const input = createHostInput({ away: options.away?.() })
   const stop = () => {
     root.unmount()
     input.dispose()
