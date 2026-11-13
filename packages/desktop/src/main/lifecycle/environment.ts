@@ -45,7 +45,7 @@ export const preferApplicationEnvironment = Effect.gen(function* () {
   const shell = process.platform === "win32" ? null : getUserShell()
   const shellEnv = shell ? yield* loadShellEnv(shell) : null
   yield* Effect.sync(() => {
-    if (!shellEnv?.XDG_STATE_HOME) delete process.env.XDG_STATE_HOME
+    if (!shellEnv?.XDG_STATE_HOME && !process.env.OPENCODE_PORTABLE_ROOT) delete process.env.XDG_STATE_HOME
     Object.assign(process.env, {
       ...shellEnv,
       OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",

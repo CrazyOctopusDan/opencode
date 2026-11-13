@@ -10,7 +10,8 @@ const setup: Plugin.MainSetup = async (ctx) => {
   const builtin = builtinMainContext(ctx)
   const build = ctx.app
   const lifecycle = builtin.lifecycle
-  const enabled = build.packaged
+  // A portable ZIP must be replaced as a ZIP; NSIS would install a separate copy with different data paths.
+  const enabled = build.packaged && !process.env.OPENCODE_PORTABLE_ROOT
   // Holds no resources, so it needs no cleanup.
   const context = logContext(ctx.log.write)
   const runPromise = Effect.runPromiseWith(context)

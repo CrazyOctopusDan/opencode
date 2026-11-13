@@ -46,7 +46,9 @@
 - CLI/Desktop 使用同一发布版本，Desktop 构建依赖匹配的 CLI 产物。复用上游 builder，CLI 归档包含完整 `bin` 内容，Linux 保留可执行权限；缺失任一要求产物必须失败。
 - 保留 `dev-sapphire` push / 手动触发、不签名、不发布 release。Windows 当前先生成 app，再包装 NSIS；解压版与 NSIS 使用同一 app，不另行编译。上游改变后需语义适配。
 - Windows 使用可选择目录的安装向导，默认按 app ID 隔离渠道，保留旧 `@opencodedesktop` 共享目录迁移。目录向导重入时保留迁移状态；进程检测排除同一路径的安装器实例和当前渠道卸载程序，仍关闭安装目录中的应用进程。
-- 选择 D 盘只改变程序位置。Desktop 的用户数据、复制的 CLI、更新器缓存和 Windows 临时文件仍遵循现有用户目录/系统配置；解压版不承诺便携数据目录或零 C 盘占用。
+- NSIS 安装版选择 D 盘只改变程序位置，用户数据仍遵循原来的用户目录。Windows 解压版从 2026-11-13 起自带 `data/README.txt`，在 Electron ready 之前检测 exe 旁的 `data/` 并启用同盘便携模式：Desktop 设置/CLI 副本在 `data/desktop`，Chromium 缓存在 `data/session`，OpenCode 的 XDG 数据/配置/缓存/服务注册在 `data/share|config|cache|state`，临时文件在 `data/tmp`。
+- 便携目录不可写或空间不足时直接报错，不回退 C 盘。旧 C 盘数据不自动迁移/删除；新便携目录需要重新登录，Windows 加密凭据仍受用户/机器约束。用户项目和外部工具的存储遵循其自身配置，不承诺系统零 C 盘写入。
+- 便携版停用 NSIS 更新入口，升级保留 `data/` 并换用新 ZIP。打包时先生成 NSIS，再为 ZIP 添加 `data/`，避免安装版意外启用便携模式。入口为 `packages/desktop/src/main/lifecycle/portable.ts`、`configure.ts`、`environment.ts`，更新入口为 `packages/gui-plugins/src/updater/main.ts`。
 - Bun/Node 要求从源提交和构建配置读取，不在 skill 内永久固定版本。`bun.lock` 以上游图为起点，保留企业 manifest 需要的依赖，目前是 Core 的 `sm-crypto` 及其传递依赖。
 
 ## 验证入口与完成标准
@@ -73,6 +75,12 @@
 - 从 `packages/client` 运行 `bun run generate` 重建合并后的客户端；根目录 `bun run check` 通过。Core 企业/会话 309 项、CLI 3 项、Server 1 项、App 状态机 39 项、Desktop 配置/凭据 12 项通过。
 - 用安装的 app-builder-lib 模板和 NSIS 编译器，在 macOS 上编译 x64/arm64 的安装/卸载四种组合通过；载荷使用测试文件，仅证明脚本可编译。4 项 Windows 行为测试本机跳过，已加入 Windows 打包工作流；实际 Windows/Linux 产物、云桌面、原生密钥环、公司服务及 UI 未重新验收。
 - 用户报告的首次安装“无法抽取 Uninstall OpenCode”尚无完整错误路径及现场复现，不能确认是文件占用、权限、临时盘空间或其他原因；此次没有绕过卸载文件写入失败。可先使用解压版部署，再在 Windows 收集完整报错定位。
+
+## 2026-11-13 Windows 便携版启动修复
+
+- 用户截图明确显示 `ENOSPC`：从 D 盘 `resources/opencode-cli.exe` 复制到 C 盘 `%APPDATA%/ai.opencode.desktop/cli/2.2.7-x64/*.tmp` 失败。这是启动时 CLI 暂存的空间错误，不能据此推断此前 NSIS 卸载文件抽取错误也是同一根因。
+- 用户确认采用同盘便携数据方案。保留 CLI 版本/架构隔离、后台服务生命周期与清理规则，只在 Windows packaged exe 旁存在 `data/` 时切换目录；版本及企业统计仍为 2.2.7。
+- 本地 `bun run check` 通过；Desktop 路径/服务相关 38 项、Updater 45 项通过。新增 `script/windows-portable.test.ts`，在 Windows x64 工作流启动真正的打包 exe，并检查便携 CLI 副本及本地服务健康；macOS 跳过这项，实际 CI 结果以对应运行记录为准。
 
 ## 已替换的旧约束
 
