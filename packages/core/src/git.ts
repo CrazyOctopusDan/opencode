@@ -1389,7 +1389,14 @@ const layer = Layer.effect(
       cwd = repository.worktree,
     ) {
       const result = yield* proc
-        .run(ChildProcess.make(gitExecutable(), args, { cwd, extendEnv: true, stdin: "ignore" }))
+        .run(
+          // Portable data can live below a deeply nested extraction directory on Windows.
+          ChildProcess.make(gitExecutable(), ["-c", "core.longpaths=true", ...args], {
+            cwd,
+            extendEnv: true,
+            stdin: "ignore",
+          }),
+        )
         .pipe(
           Effect.mapError(
             (cause) => new WorktreeError({ operation, directory: worktreeDirectory, message: cause.message, cause }),

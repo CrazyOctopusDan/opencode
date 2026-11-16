@@ -309,7 +309,13 @@ function NewSessionLocationDialog(props: {
 
     return (
       [
-        { id: "main", type: "workspace" as const, project, value: "main", directory: project.worktree },
+        {
+          id: "main",
+          type: "workspace" as const,
+          project,
+          value: "main",
+          directory: props.project.isSelected(project) ? props.workspace.project.root() : project.worktree,
+        },
         { id: "create", type: "workspace" as const, project, value: "create", directory: project.worktree },
         ...(project.vcs === "git" ? [{ id: "base", type: "base" as const, project, directory: project.worktree }] : []),
         ...directories.map((directory) => ({

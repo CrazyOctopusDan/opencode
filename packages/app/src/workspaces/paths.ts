@@ -8,6 +8,13 @@ type WorkspaceProject = {
   worktrees?: readonly WorktreeDirectory[]
 }
 
+/** Local keeps the chosen subdirectory; switching from a linked checkout still returns to the main checkout. */
+export function localSessionDirectory(directory: string, project?: { directory: string; canonical: string }) {
+  if (!project || sameDirectory(project.directory, project.canonical)) return directory
+
+  return project.canonical
+}
+
 export function workspaceDirectories(project: WorkspaceProject) {
   return (project.sandboxes ?? []).filter((directory) => !sameDirectory(project.worktree, directory))
 }

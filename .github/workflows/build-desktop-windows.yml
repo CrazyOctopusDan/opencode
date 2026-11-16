@@ -107,6 +107,11 @@ jobs:
         run: bun test electron-builder.config.test.ts script/windows-installer.test.ts src/main/lifecycle/portable.test.ts
         working-directory: packages/desktop
 
+      - name: Verify Windows long-path worktrees
+        if: matrix.arch == 'x64'
+        run: bun run script/test.ts test/git.test.ts --test-name-pattern="Git worktrees"
+        working-directory: packages/core
+
       - name: Build Desktop with bundled Sapphire CLI
         run: bun run build
         working-directory: packages/desktop

@@ -4,6 +4,7 @@ import { Permission } from "@opencode/schema/permission"
 import { artifactKind, artifactMime } from "@opencode/util/artifact"
 import { Model } from "@opencode/schema/model"
 import { Worktree } from "@opencode/schema/worktree"
+import { containsDirectory } from "@opencode/util/path"
 import { Effect, Layer, Option, Predicate, Schema } from "effect"
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/http-api"
@@ -943,6 +944,8 @@ function mockHandlers(
           }),
         configShells: () => Effect.succeed(config.shells ?? []),
         configUpdate: () => noContent,
+        // Workspace fixtures start after enterprise sign-in; login itself has separate coverage.
+        travelSkyStatus: () => Effect.succeed({ data: { enabled: true, authenticated: true, username: "fixture" } }),
         websearchProviders: () =>
           Effect.sync(() => ({ location: location(config), data: resolve(config.websearchProviders ?? []) })),
         // No scenario signs in to an OpenCode Console workspace, so none has usage limits.
@@ -1491,13 +1494,15 @@ function location(config: MockServerConfig, directory = config.directory) {
       ),
     )
 
-  const root = listed ? (listed.canonical ?? listed.worktree) : undefined
-
-  if (listed && root) return { directory, project: { id: listed.id, directory: root, canonical: root } }
+  const project = listed ?? projectSeed(config)
+  const root = project?.canonical ?? project?.worktree ?? config.directory
+  const checkout = project?.sandboxes
+    ?.filter((sandbox) => containsDirectory(sandbox, directory))
+    .toSorted((a, b) => b.length - a.length)[0]
 
   return {
     directory,
-    project: { id: projectSeed(config)?.id, directory: config.directory, canonical: config.directory },
+    project: { id: project?.id, directory: checkout ?? root, canonical: root },
   }
 }
 

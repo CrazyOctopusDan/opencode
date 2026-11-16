@@ -113,6 +113,26 @@ test("the location shortcuts choose worktrees from every state and keep cycling"
   await expect(view.editor).toBeFocused()
 })
 
+test("a local draft preserves the selected repository subdirectory", async ({ page }) => {
+  const root = "D:/tem_v1_public_upd"
+  const directory = `${root}/web/open_web`
+  const created: unknown[] = []
+  const view = await openDraft(page, {
+    name: "LocalSubdirectory",
+    directory: root,
+    seed: { tabs: [{ draft: "draft_localsubdirectory", directory }] },
+    onSessionCreate: (body) => void created.push(body.location),
+  })
+
+  await expect(page.locator('[data-slot="new-session-location-path"]')).toHaveText(directory)
+  await newSessionBranch(page).click()
+  await expect(page.getByRole("option", { name: /LocalSubdirectory main/ })).toContainText(directory)
+  await page.getByRole("option", { name: /LocalSubdirectory main/ }).click()
+  await view.editor.fill("Work only in web/open_web")
+  await submit(page).click()
+  await expect.poll(() => created).toEqual([{ directory }])
+})
+
 test("a draft opened in a worktree starts on the main checkout and targets it", async ({ page }) => {
   const root = "C:/OpenCode/LocalFromWorktree"
 
@@ -832,6 +852,17 @@ for (const row of [
     await expect(pending.message).toHaveCount(0)
     await expect(tabLink(page, pending.sessionID)).toHaveCount(0)
     expect(mock.creates).toEqual([])
+
+    await editor(page).fill("Which model are you?")
+    await newSessionBranch(page).click()
+    await page.getByRole("option", { name: /workspace-pending main/ }).click()
+    await submit(page).click()
+    await expect.poll(() => mock.prompts.length).toBe(1)
+    expect(mock.prompts[0]).toMatchObject({ body: { text: "Which model are you?" } })
+    expect(mock.calls).toEqual(["worktree", "session", "prompt"])
+    await expect(page.locator('[data-component="user-message"] [data-slot="user-message-text"]')).toHaveText(
+      "Which model are you?",
+    )
   })
 }
 

@@ -75,6 +75,34 @@ describe("Git", () => {
 })
 
 describe("Git worktrees", () => {
+  it.live("checks out long paths without changing the user's Git configuration", () =>
+    Effect.gen(function* () {
+      const root = yield* tmpdirScoped()
+      const directory = AbsolutePath.make(path.join(root.path, "source"))
+      const worktree = AbsolutePath.make(path.join(root.path, "portable-".repeat(15), "workspace"))
+      const filename = `${"migration_".repeat(12)}.py`
+      yield* Effect.promise(async () => {
+        await initGit(directory)
+        await fs.writeFile(path.join(directory, filename), "migration\n")
+        await $`git -c core.longpaths=true add .`.cwd(directory).quiet()
+        await $`git commit -m migration`.cwd(directory).quiet()
+        await fs.appendFile(path.join(directory, ".git", "config"), "[core]\n\tlongpaths = false\n")
+        await fs.mkdir(path.dirname(worktree), { recursive: true })
+      })
+      const config = yield* read(path.join(directory, ".git", "config"))
+      const git = yield* Git.Service
+      const repository = yield* git.repo.discover(directory)
+      if (!repository) throw new Error("Repository not found")
+
+      expect(path.join(worktree, filename).length).toBeGreaterThan(260)
+      const linked = yield* git.worktree.create({ repository, directory: worktree })
+      expect(yield* read(path.join(worktree, filename))).toBe("migration\n")
+      expect(yield* read(path.join(directory, ".git", "config"))).toBe(config)
+      yield* git.worktree.remove({ repository: linked, directory: worktree, force: false })
+      expect((yield* git.worktree.list(repository)).some((entry) => entry.directory === linked.worktree)).toBe(false)
+    }),
+  )
+
   it.live("creates, lists, and removes linked worktrees", () =>
     Effect.gen(function* () {
       const root = yield* tmpdirScoped()

@@ -11,6 +11,7 @@ import { sameDirectory } from "@opencode/util/path"
 import {
   isWorkspaceDirectory,
   isWorkspaceSelection,
+  localSessionDirectory,
   workspaceDefaultSelection,
   workspaceSelectionDestination,
   workspaceSelectionDirectories,
@@ -167,13 +168,7 @@ export function createNewSessionWorkspaceController(input: {
     }),
   )
 
-  // A draft opened from a worktree session keeps that worktree as its directory; Local still runs in the main checkout.
-  const projectRoot = createMemo(
-    () =>
-      data.location.info({ directory: sdk().directory })?.project.canonical ??
-      currentProject()?.worktree ??
-      sdk().directory,
-  )
+  const projectRoot = createMemo(() => localSessionDirectory(sdk().directory, sdk().current?.project))
 
   createEffect(() => {
     void Promise.all([

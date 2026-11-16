@@ -48,8 +48,7 @@ export function createComposerProjectControls(props: { draftId: string; worktree
   const ready = createMemo(() =>
     servers.list.filter(
       (connection) =>
-        !!ServerConnection.http(connection) &&
-        !isServerFailed(global.servers.health[ServerConnection.key(connection)]),
+        !!ServerConnection.http(connection) && !isServerFailed(global.servers.health[ServerConnection.key(connection)]),
     ),
   )
 
@@ -94,7 +93,7 @@ export function createComposerProjectControls(props: { draftId: string; worktree
 
         if (!directory) return
         void global.serverCtx(ServerConnection.key(connection))?.projects.add(directory)
-        selectProject(directory, serverKey)
+        selectProject(directory, serverKey, "main")
       },
     })
   }
