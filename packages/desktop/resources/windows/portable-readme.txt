@@ -14,6 +14,12 @@ tmp：本程序及其子进程使用的临时目录
 $env:XDG_STATE_HOME = Join-Path $PWD "data\state"
 & ".\resources\opencode-cli.exe" service stop
 
+同为 2.2.7 的修复包会复用旧 CLI 缓存。确认 Desktop 已退出、以上停止命令成功后，
+仅删除 data\desktop\cli 文件夹，再保留其他 data 内容并换用新包：
+Remove-Item -LiteralPath ".\data\desktop\cli" -Recurse -Force
+此目录仅保存可重建的 CLI 程序副本，不是会话或登录配置；下次启动会从新包重新复制。
+不要删除整个 data 或 data\desktop 文件夹。
+
 不要使用 NSIS 安装包覆盖便携版。本版本不启用安装器自动更新。
 登录凭据使用 Windows 当前用户加密，跨电脑或跨用户移动后可能需要重新登录。
 

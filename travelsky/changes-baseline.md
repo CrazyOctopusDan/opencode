@@ -50,6 +50,7 @@
 - 便携目录不可写或空间不足时直接报错，不回退 C 盘。旧 C 盘数据不自动迁移/删除；新便携目录需要重新登录，Windows 加密凭据仍受用户/机器约束。用户项目和外部工具的存储遵循其自身配置，不承诺系统零 C 盘写入。
 - 便携版停用 NSIS 更新入口，升级保留 `data/` 并换用新 ZIP。打包时先生成 NSIS，再为 ZIP 添加 `data/`，避免安装版意外启用便携模式。入口为 `packages/desktop/src/main/lifecycle/portable.ts`、`configure.ts`、`environment.ts`，更新入口为 `packages/gui-plugins/src/updater/main.ts`。
 - Git 工作区命令使用进程级 `-c core.longpaths=true`，支持便携数据目录下的 Windows 长路径，不改写用户 Git 配置。Windows x64 打包前运行 `packages/core/test/git.test.ts` 的工作区回归。
+- 同版本 2.2.7 换包仍会复用已暂存的 CLI 与兼容后台服务；升级须先退出 Desktop、成功执行 `service stop`，再仅清理 `data/desktop/cli` 可重建副本，保留其他数据。具体命令见便携包 `data/README.txt`。
 - 新会话“本地”保留主仓库内选中的子目录；从已有 linked worktree 切回“本地”仍返回主仓库。显式添加目录会选中本地模式，路径显示、会话创建与 MCP 使用相同目录；项目身份仍按仓库归组，这不是文件访问沙箱。工作区创建失败发生在会话/提示提交前，保留草稿与隔离选择，不自动改为原仓库执行。
 - Bun/Node 要求从源提交和构建配置读取，不在 skill 内永久固定版本。`bun.lock` 以上游图为起点，保留企业 manifest 需要的依赖，目前是 Core 的 `sm-crypto` 及其传递依赖。
 
