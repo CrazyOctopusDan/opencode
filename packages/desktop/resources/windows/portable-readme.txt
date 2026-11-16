@@ -1,6 +1,8 @@
 OpenCode Sapphire Windows 便携版（2.2.7）
 
 请完整解压 win-unpacked 文件夹到空间充足且可写的磁盘，再打开 OpenCode.exe。
+推荐使用 D:\OpenCode 这类短路径，避免多层重复的解压包名称。
+Git 长路径支持可处理较深的项目文件，但仓库根目录本身过长仍可能触发 '$GIT_DIR' too big。
 与程序并列的 data 文件夹用于启用便携模式，请保留本文件夹。
 
 desktop：Desktop 设置、日志、登录凭据和按版本保存的 CLI 副本

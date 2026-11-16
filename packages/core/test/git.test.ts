@@ -79,7 +79,8 @@ describe("Git worktrees", () => {
     Effect.gen(function* () {
       const root = yield* tmpdirScoped()
       const directory = AbsolutePath.make(path.join(root.path, "source"))
-      const worktree = AbsolutePath.make(path.join(root.path, "portable-".repeat(15), "workspace"))
+      // Keep Git's metadata path short; the checked-out file, not the repository root, exceeds MAX_PATH.
+      const worktree = AbsolutePath.make(path.join(root.path, "portable-".repeat(8), "workspace"))
       const filename = `${"migration_".repeat(12)}.py`
       yield* Effect.promise(async () => {
         await initGit(directory)
@@ -95,6 +96,16 @@ describe("Git worktrees", () => {
       if (!repository) throw new Error("Repository not found")
 
       expect(path.join(worktree, filename).length).toBeGreaterThan(260)
+      if (process.platform === "win32") {
+        const result = yield* Effect.promise(() =>
+          $`git -c core.longpaths=false worktree add --detach ${worktree + "-disabled"}`
+            .cwd(directory)
+            .quiet()
+            .nothrow(),
+        )
+        expect(result.exitCode).not.toBe(0)
+        expect(result.stderr.toString()).toContain("Filename too long")
+      }
       const linked = yield* git.worktree.create({ repository, directory: worktree })
       expect(yield* read(path.join(worktree, filename))).toBe("migration\n")
       expect(yield* read(path.join(directory, ".git", "config"))).toBe(config)
